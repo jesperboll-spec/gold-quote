@@ -1,0 +1,187 @@
+<!-- Paste this entire snippet into a Framer "Embed" block. It is a self-contained, mobile-first calculator.
+     No servers or paid APIs. User can manually enter spot price; formulas auto-update.
+     Optional: if you later add a free API key source, you can wire it to the #spot input.
+-->
+<div id="gold-app" style="font-family: system-ui, -apple-system, Segoe UI, Roboto, Inter, Helvetica, Arial; color:#0f172a;">
+  <style>
+    #gold-app * { box-sizing: border-box; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+    .card { background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:16px; box-shadow:0 8px 24px rgba(0,0,0,.06); }
+    .row { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    @media (max-width:640px){ .row{ grid-template-columns:1fr; } }
+    label { display:block; font-size:12px; color:#475569; margin-bottom:6px; }
+    input, select, button { width:100%; padding:12px 12px; border:1px solid #d1d5db; border-radius:12px; font-size:14px; }
+    input:focus { outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.2); }
+    .muted { color:#64748b; font-size:12px; }
+    .kpi { display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-top:1px dashed #e2e8f0; }
+    .kpi:first-child{ border-top:none; }
+    .kpi .label{ color:#475569; font-size:13px; }
+    .kpi .value{ font-variant-numeric:tabular-nums; font-weight:600; }
+    .pill { display:inline-block; padding:4px 8px; font-size:12px; background:#f1f5f9; border-radius:999px; color:#334155; }
+    .title { font-size:18px; font-weight:600; margin-bottom:8px; }
+    .subtitle { font-size:13px; color:#64748b; }
+    .btn { cursor:pointer; background:#0f172a; color:white; border:none; }
+    .grid-3 { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; }
+    @media (max-width:640px){ .grid-3{ grid-template-columns:1fr; } }
+  </style>
+
+  <div class="wrap">
+    <div class="title">Gold Pricing Calculator <span class="pill">Client-side • Free</span></div>
+    <div class="subtitle">Inputs persist locally. Spot and ROE are editable. Outputs auto-calc. All figures indicative only.</div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="row">
+        <div>
+          <label for="spot">Spot price (USD / troy oz)</label>
+          <input id="spot" type="number" step="0.01" inputmode="decimal" placeholder="e.g., 2400" />
+          <div class="muted">Manual entry keeps it 100% free. (1 troy oz = 31.1034768 g)</div>
+        </div>
+        <div>
+          <label for="roe">ROE – SLL per 1 USD</label>
+          <input id="roe" type="number" step="0.0001" inputmode="decimal" value="22" />
+          <div class="muted">Prefilled with 22; overwrite as needed.</div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:12px;">
+        <div>
+          <label for="karat">Karat (or set Purity % below)</label>
+          <select id="karat">
+            <option value="24">24k (99.99%)</option>
+            <option value="22" selected>22k (91.67%)</option>
+            <option value="21">21k (87.5%)</option>
+            <option value="18">18k (75.0%)</option>
+            <option value="14">14k (58.5%)</option>
+            <option value="10">10k (41.7%)</option>
+          </select>
+        </div>
+        <div>
+          <label for="purity">Purity (%) – overrides karat when set</label>
+          <input id="purity" type="number" step="0.01" inputmode="decimal" placeholder="Leave blank to use karat" />
+        </div>
+      </div>
+
+      <div class="grid-3" style="margin-top:12px;">
+        <div>
+          <label for="weight">Weight</label>
+          <input id="weight" type="number" step="0.001" inputmode="decimal" placeholder="e.g., 100" />
+        </div>
+        <div>
+          <label for="unit">Unit</label>
+          <select id="unit">
+            <option value="g" selected>grams (g)</option>
+            <option value="oz">troy ounces (oz t)</option>
+            <option value="kg">kilograms (kg)</option>
+          </select>
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <button id="reset" class="btn">Reset</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:12px;">
+      <div class="title" style="font-size:16px;">Outputs</div>
+      <div class="kpi"><div class="label">USD per gram (from spot)</div><div class="value" id="usdPerGram">—</div></div>
+      <div class="kpi"><div class="label">SLL per gram (using ROE)</div><div class="value" id="sllPerGram">—</div></div>
+      <div class="kpi"><div class="label">SLL per gram ÷ 5</div><div class="value" id="sllDivided">—</div></div>
+      <div class="kpi"><div class="label">Target buying price (SLL/g, 12% deducted)</div><div class="value" id="targetPrice">—</div></div>
+
+      <div class="kpi"><div class="label">Fine gold weight (g)</div><div class="value" id="fineG">—</div></div>
+      <div class="kpi"><div class="label">Melt value (USD)</div><div class="value" id="meltUSD">—</div></div>
+    </div>
+
+    <div class="muted" style="margin-top:8px;">Formulae: USD/g = USD/oz ÷ 31.1034768. SLL/g = USD/g × ROE. Target = (SLL/g ÷ 5) × (1 − 0.12). Fine g = gross × purity. Melt USD = (fine_g/31.1034768) × spot.</div>
+    <div class="muted" style="margin-top:4px;">Disclaimer: Indicative calculations only. Not a binding quote. Validate inputs before transacting.</div>
+  </div>
+
+  <script>
+  (function(){
+    const $ = (id)=>document.getElementById(id);
+
+    const SPOT = $('spot');
+    const ROE = $('roe');
+    const KARAT = $('karat');
+    const PURITY = $('purity');
+    const WEIGHT = $('weight');
+    const UNIT = $('unit');
+
+    const USDG = $('usdPerGram');
+    const SLLG = $('sllPerGram');
+    const SLLDIV = $('sllDivided');
+    const TARGET = $('targetPrice');
+    const FINEG = $('fineG');
+    const MELT = $('meltUSD');
+
+    const OZ_IN_G = 31.1034768;
+
+    const stateKeys = ['spot','roe','karat','purity','weight','unit'];
+
+    // Load persisted values
+    try{
+      const saved = JSON.parse(localStorage.getItem('gold_calc_v1')||'{}');
+      stateKeys.forEach(k=>{
+        if(saved[k]!==undefined && $(k)) $(k).value = saved[k];
+      });
+    }catch(e){}
+
+    function purityFromKarat(k){ return Math.max(0, Math.min(1, Number(k)/24)); }
+
+    function toGrams(value, unit){
+      const v = Number(value)||0;
+      if(unit==='g') return v;
+      if(unit==='oz') return v * OZ_IN_G;
+      if(unit==='kg') return v * 1000;
+      return 0;
+    }
+
+    function fmt(n, d=2){
+      if(!isFinite(n)) return '—';
+      return Number(n).toLocaleString(undefined,{minimumFractionDigits:d, maximumFractionDigits:d});
+    }
+
+    function calc(){
+      const spot = Number(SPOT.value)||0; // USD/oz
+      const roe = Number(ROE.value)||0;   // SLL per USD
+      const karat = Number(KARAT.value)||0;
+      const purityOverride = PURITY.value!=='' ? (Number(PURITY.value)/100) : null;
+      const purity = purityOverride!=null ? purityOverride : purityFromKarat(karat);
+
+      const grossG = toGrams(WEIGHT.value, UNIT.value);
+      const fineG = grossG * purity; // grams fine
+      const usdPerGram = spot>0 ? (spot / OZ_IN_G) : 0;
+      const sllPerGram = usdPerGram * roe;
+      const sllDivided = sllPerGram / 5;
+      const target = sllDivided * (1 - 0.12); // deduct 12%
+      const meltUSD = (fineG / OZ_IN_G) * spot;
+
+      USDG.textContent = fmt(usdPerGram, 4);
+      SLLG.textContent = fmt(sllPerGram, 2);
+      SLLDIV.textContent = fmt(sllDivided, 2);
+      TARGET.textContent = fmt(target, 2);
+      FINEG.textContent = fmt(fineG, 3);
+      MELT.textContent = fmt(meltUSD, 2);
+
+      // persist
+      const store = {};
+      stateKeys.forEach(k=>store[k]=$(k).value);
+      localStorage.setItem('gold_calc_v1', JSON.stringify(store));
+    }
+
+    ['input','change'].forEach(evt=>{
+      [SPOT,ROE,KARAT,PURITY,WEIGHT,UNIT].forEach(el=> el.addEventListener(evt, calc));
+    });
+
+    $('reset').addEventListener('click', ()=>{
+      [SPOT,PURITY,WEIGHT].forEach(el=> el.value='');
+      ROE.value = 22;
+      KARAT.value = '22';
+      UNIT.value = 'g';
+      calc();
+    });
+
+    calc();
+  })();
+  </script>
+</div>
