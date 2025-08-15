@@ -212,13 +212,16 @@ function calc(){
     ['input','change'].forEach(evt=>{
       [SPOT,ROE,KARAT,PURITY,WEIGHT,UNIT].forEach(el=> el.addEventListener(evt, calc));
     });
+if (REFRESH) { REFRESH.addEventListener('click', ()=>fetchSpot(true)); }
 
     $('reset').addEventListener('click', ()=>{
       [SPOT,PURITY,WEIGHT].forEach(el=> el.value='');
       ROE.value = 22;
       KARAT.value = '22';
       UNIT.value = 'g';
-      calc();
+calc();
+fetchSpot(false);
+
     });
 
     calc();
