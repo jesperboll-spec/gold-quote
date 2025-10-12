@@ -29,10 +29,9 @@ index 51bc6fd2b08431ea63ba63a099f209f7f1b9d531..a647a195bae69c3f7a3570a74035e235
          </div>
          <div>
            <label for="roe">ROE — SLL per 1 USD</label>
--          <input id="roe" type="number" step="0.0001" inputmode="decimal" value="22" />
--          <div class="muted">Prefilled with 22; overwrite as needed.</div>
-+          <input id="roe" type="number" step="0.01" inputmode="decimal" value="23.70" />
-+          <div class="muted">Prefilled with 23.70; overwrite as needed.</div>
+
+          <input id="roe" type="number" step="0.01" inputmode="decimal" value="23.70" />
+          <div class="muted">Prefilled with 23.70; overwrite as needed.</div>
          </div>
        </div>
        <div class="src" id="srcInfo">Source: LBMA daily auction (delayed). <span id="whichFix"></span></div>
@@ -43,13 +42,12 @@ index 51bc6fd2b08431ea63ba63a099f209f7f1b9d531..a647a195bae69c3f7a3570a74035e235
        <div class="kpi"><div class="label">LBMA USD per gram</div><div class="value" id="usdPerGram">—</div></div>
        <div class="kpi"><div class="label">SLL per gram</div><div class="value" id="sllPerGram">—</div></div>
        <div class="kpi"><div class="label">SLL per Carat</div><div class="value" id="sllPerCarat">—</div></div>
--      <div class="kpi"><div class="label">Target buying price (SLL/carat, −12%)</div><div class="value" id="targetPrice">—</div></div>
-+      <div class="kpi"><div class="label">Target buying price (SLL/carat × 0.85)</div><div class="value" id="targetPrice">—</div></div>
+      <div class="kpi"><div class="label">Target buying price (SLL/carat × 0.85)</div><div class="value" id="targetPrice">—</div></div>
      </div>
  
      <div class="muted" style="margin-top:8px;">
--      Formulae: USD/g = USD/oz ÷ 31.1034768. SLL/g = USD/g × ROE. SLL/carat = (SLL/g) ÷ 5. Target = (SLL/carat × 0.88).
-+      Formulae: USD/g = USD/oz ÷ 31.1034768. SLL/g = USD/g × ROE. SLL/carat = (SLL/g) ÷ 5. Target = (SLL/carat × 0.85).
+
+      Formulae: USD/g = USD/oz ÷ 31.1034768. SLL/g = USD/g × ROE. SLL/carat = (SLL/g) ÷ 5. Target = (SLL/carat × 0.85).
      </div>
      <div class="muted" style="margin-top:4px;">
        Disclaimer: LBMA data are published with a delay to midnight London time on the day set. Indicative use only.
@@ -74,15 +72,15 @@ index 51bc6fd2b08431ea63ba63a099f209f7f1b9d531..a647a195bae69c3f7a3570a74035e235
        const OZ_IN_G = 31.1034768;
        const stateKeys = ['spot','roe'];
  
-+      function enforceRoePrecision(){
-+        if (!ROE) return;
-+        if (ROE.value === '') return;
-+        const val = Number(ROE.value);
-+        if (isFinite(val)) {
-+          ROE.value = val.toFixed(2);
-+        }
-+      }
-+
+      function enforceRoePrecision(){
+        if (!ROE) return;
+        if (ROE.value === '') return;
+        const val = Number(ROE.value);
+        if (isFinite(val)) {
+          ROE.value = val.toFixed(2);
+        }
+      }
+
        // Load persisted inputs
        try {
          const saved = JSON.parse(localStorage.getItem('gold_calc_v3_lbma')||'{}');
@@ -91,8 +89,8 @@ index 51bc6fd2b08431ea63ba63a099f209f7f1b9d531..a647a195bae69c3f7a3570a74035e235
          });
        } catch(e){}
  
-+      enforceRoePrecision();
-+
+      enforceRoePrecision();
+
        function fmtInt(n){
          if(!isFinite(n)) return '—';
          return Math.round(n).toLocaleString();
@@ -105,8 +103,7 @@ index 51bc6fd2b08431ea63ba63a099f209f7f1b9d531..a647a195bae69c3f7a3570a74035e235
          const usdPerGram = spot>0 ? (spot / OZ_IN_G) : 0;
          const sllPerGram = usdPerGram * roe;
          const sllPerCarat = sllPerGram / 5;
--        const target = sllPerCarat * 0.88;   // deduct 12% from Carat
-+        const target = sllPerCarat * 0.85;
+        const target = sllPerCarat * 0.85;
  
          USDG.textContent     = fmtInt(usdPerGram);
          SLLG.textContent     = fmtInt(sllPerGram);
@@ -158,13 +155,13 @@ index 51bc6fd2b08431ea63ba63a099f209f7f1b9d531..a647a195bae69c3f7a3570a74035e235
        ['input','change'].forEach(evt=>{
          [SPOT, ROE].forEach(el => el.addEventListener(evt, calc));
        });
-+      ROE.addEventListener('blur', ()=>{
-+        enforceRoePrecision();
-+        calc();
-+      });
+      ROE.addEventListener('blur', ()=>{
+        enforceRoePrecision();
+        calc();
+      });
        if (REFRESH) { REFRESH.addEventListener('click', ()=>fetchLBMA(true)); }
  
-+      formatRoe();
+      formatRoe();
        calc();
        fetchLBMA(false);
      })();
@@ -173,7 +170,6 @@ index 51bc6fd2b08431ea63ba63a099f209f7f1b9d531..a647a195bae69c3f7a3570a74035e235
    <img src="Borg Industries Logo.png" alt="My Logo" style="max-width:320px; height:auto;" />
  </div>
  </body>
- </html>
- 
+ </html> 
 EOF
 )
