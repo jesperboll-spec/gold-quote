@@ -132,7 +132,7 @@
         const usdPerGram = spot>0 ? (spot / OZ_IN_G) : 0;
         const sllPerGram = usdPerGram * roe;
         const sllPerCarat = sllPerGram / 5;
-        const target = sllPerCarat * 0.85;
+        const target = sllPerCarat * 0.7838;
 
         USDG.textContent     = fmtInt(usdPerGram);
         SLLG.textContent     = fmtInt(sllPerGram);
