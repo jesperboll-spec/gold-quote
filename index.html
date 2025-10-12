@@ -1,77 +1,106 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/index.html b/index.html
-index 51bc6fd2b08431ea63ba63a099f209f7f1b9d531..a647a195bae69c3f7a3570a74035e2356bd65322 100644
---- a/index.html
-+++ b/index.html
-@@ -38,112 +38,123 @@
-     .kpi .label { color:#475569; font-size:13px; }
-     .kpi .value { font-variant-numeric: tabular-nums; font-weight:600; }
-     .src { font-size:12px; color:#475569; margin-top:8px; }
-   </style>
- </head>
- <body>
-   <div class="wrap">
-    
- 
-     <div class="title">Gold Pricing Calculator — LBMA <span class="pill">Client-side • Free</span></div>
-     <div class="subtitle">Pulls LBMA daily price (delayed); editable ROE; instant calculations. Inputs persist locally. Indicative only.</div>
- 
-     <div class="card">
-       <div class="row">
-         <div>
-           <label for="spot">LBMA Gold (USD / troy oz)</label>
-           <div style="display:flex; gap:8px; align-items:center;">
-             <input id="spot" type="number" step="0.01" inputmode="decimal" placeholder="Fetching…" />
-             <button id="refreshSpot" class="btn" style="white-space:nowrap;">Refresh</button>
-           </div>
-           <div class="muted">1 troy oz = 31.1034768 g</div>
-           <div class="muted" id="spotInfo"></div>
-         </div>
-         <div>
-           <label for="roe">ROE — SLL per 1 USD</label>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gold Pricing Calculator — LBMA</title>
+  <meta name="description" content="LBMA-based gold calculator: pulls LBMA daily price, ROE to SLL, SLL per carat, and −12% target buy price. Client-side." />
+  <style>
+    :root { color-scheme: light; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial;
+      color: #0f172a;
+      background: #f8fafc;
+    }
+    * { box-sizing: border-box; }
+    .wrap { max-width: 720px; margin: 0 auto; padding: 16px; }
+    .title { font-size: 20px; font-weight: 700; margin: 6px 0 2px; }
+    .pill { display:inline-block; margin-left:8px; padding:4px 8px; font-size:12px; background:#f1f5f9; border-radius:999px; color:#334155; }
+    .subtitle { font-size: 13px; color: #64748b; }
+    .card {
+      background: #fff; border: 1px solid #e5e7eb; border-radius: 16px; padding: 16px;
+      box-shadow: 0 8px 24px rgba(0,0,0,.06); margin-top: 12px;
+    }
+    .row { display:grid; grid-template-columns: 1fr 1fr; gap:12px; }
+    @media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
+    label { display:block; font-size:12px; color:#475569; margin-bottom:6px; }
+    input, button {
+      width:100%; padding:12px; border:1px solid #d1d5db; border-radius:12px; font-size:14px; background:#fff;
+    }
+    input:focus { outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.2); }
+    .btn { cursor:pointer; background:#0f172a; color:#fff; border:none; }
+    .btn:disabled { opacity:.6; cursor:default; }
+    .muted { color:#64748b; font-size:12px; }
+    .kpi { display:flex; justify-content:space-between; padding:12px 0; border-top:1px dashed #e2e8f0; }
+    .kpi:first-child { border-top:none; }
+    .kpi .label { color:#475569; font-size:13px; }
+    .kpi .value { font-variant-numeric: tabular-nums; font-weight:600; }
+    .src { font-size:12px; color:#475569; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
 
+
+    <div class="title">Gold Pricing Calculator — LBMA <span class="pill">Client-side • Free</span></div>
+    <div class="subtitle">Pulls LBMA daily price (delayed); editable ROE; instant calculations. Inputs persist locally. Indicative only.</div>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <label for="spot">LBMA Gold (USD / troy oz)</label>
+          <div style="display:flex; gap:8px; align-items:center;">
+            <input id="spot" type="number" step="0.01" inputmode="decimal" placeholder="Fetching…" />
+            <button id="refreshSpot" class="btn" style="white-space:nowrap;">Refresh</button>
+          </div>
+          <div class="muted">1 troy oz = 31.1034768 g</div>
+          <div class="muted" id="spotInfo"></div>
+        </div>
+        <div>
+          <label for="roe">ROE — SLL per 1 USD</label>
           <input id="roe" type="number" step="0.01" inputmode="decimal" value="23.70" />
           <div class="muted">Prefilled with 23.70; overwrite as needed.</div>
-         </div>
-       </div>
-       <div class="src" id="srcInfo">Source: LBMA daily auction (delayed). <span id="whichFix"></span></div>
-     </div>
- 
-     <div class="card">
-       <div class="title" style="font-size:16px;">Outputs</div>
-       <div class="kpi"><div class="label">LBMA USD per gram</div><div class="value" id="usdPerGram">—</div></div>
-       <div class="kpi"><div class="label">SLL per gram</div><div class="value" id="sllPerGram">—</div></div>
-       <div class="kpi"><div class="label">SLL per Carat</div><div class="value" id="sllPerCarat">—</div></div>
-      <div class="kpi"><div class="label">Target buying price (SLL/carat × 0.85)</div><div class="value" id="targetPrice">—</div></div>
-     </div>
- 
-     <div class="muted" style="margin-top:8px;">
+        </div>
+      </div>
+      <div class="src" id="srcInfo">Source: LBMA daily auction (delayed). <span id="whichFix"></span></div>
+    </div>
 
+    <div class="card">
+      <div class="title" style="font-size:16px;">Outputs</div>
+      <div class="kpi"><div class="label">LBMA USD per gram</div><div class="value" id="usdPerGram">—</div></div>
+      <div class="kpi"><div class="label">SLL per gram</div><div class="value" id="sllPerGram">—</div></div>
+      <div class="kpi"><div class="label">SLL per Carat</div><div class="value" id="sllPerCarat">—</div></div>
+      <div class="kpi"><div class="label">Target buying price (SLL/carat × 0.85)</div><div class="value" id="targetPrice">—</div></div>
+    </div>
+
+    <div class="muted" style="margin-top:8px;">
       Formulae: USD/g = USD/oz ÷ 31.1034768. SLL/g = USD/g × ROE. SLL/carat = (SLL/g) ÷ 5. Target = (SLL/carat × 0.85).
-     </div>
-     <div class="muted" style="margin-top:4px;">
-       Disclaimer: LBMA data are published with a delay to midnight London time on the day set. Indicative use only.
-     </div>
-   </div>
- 
-   <script>
-     (function(){
-       const $ = (id)=>document.getElementById(id);
- 
-       const SPOT = $('spot');
-       const REFRESH = $('refreshSpot');
-       const SPOTINFO = $('spotInfo');
-       const ROE = $('roe');
- 
-       const USDG = $('usdPerGram');
-       const SLLG = $('sllPerGram');
-       const SLLCARAT = $('sllPerCarat');
-       const TARGET = $('targetPrice');
-       const WHICH = $('whichFix');
- 
-       const OZ_IN_G = 31.1034768;
-       const stateKeys = ['spot','roe'];
- 
+    </div>
+    <div class="muted" style="margin-top:4px;">
+      Disclaimer: LBMA data are published with a delay to midnight London time on the day set. Indicative use only.
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      const $ = (id)=>document.getElementById(id);
+
+      const SPOT = $('spot');
+      const REFRESH = $('refreshSpot');
+      const SPOTINFO = $('spotInfo');
+      const ROE = $('roe');
+
+      const USDG = $('usdPerGram');
+      const SLLG = $('sllPerGram');
+      const SLLCARAT = $('sllPerCarat');
+      const TARGET = $('targetPrice');
+      const WHICH = $('whichFix');
+
+      const OZ_IN_G = 31.1034768;
+      const stateKeys = ['spot','roe'];
+
       function enforceRoePrecision(){
         if (!ROE) return;
         if (ROE.value === '') return;
@@ -81,95 +110,112 @@ index 51bc6fd2b08431ea63ba63a099f209f7f1b9d531..a647a195bae69c3f7a3570a74035e235
         }
       }
 
-       // Load persisted inputs
-       try {
-         const saved = JSON.parse(localStorage.getItem('gold_calc_v3_lbma')||'{}');
-         stateKeys.forEach(k => {
-           if (saved[k] !== undefined && $(k)) $(k).value = saved[k];
-         });
-       } catch(e){}
- 
+      // Load persisted inputs
+      try {
+        const saved = JSON.parse(localStorage.getItem('gold_calc_v3_lbma')||'{}');
+        stateKeys.forEach(k => {
+          if (saved[k] !== undefined && $(k)) $(k).value = saved[k];
+        });
+      } catch(e){}
+
       enforceRoePrecision();
 
-       function fmtInt(n){
-         if(!isFinite(n)) return '—';
-         return Math.round(n).toLocaleString();
-       }
- 
-       function calc(){
-         const spot = Number(SPOT.value)||0;   // USD/oz
-         const roe  = Number(ROE.value)||0;    // SLL per USD
- 
-         const usdPerGram = spot>0 ? (spot / OZ_IN_G) : 0;
-         const sllPerGram = usdPerGram * roe;
-         const sllPerCarat = sllPerGram / 5;
+      function fmtInt(n){
+        if(!isFinite(n)) return '—';
+        return Math.round(n).toLocaleString();
+      }
+
+      function calc(){
+        const spot = Number(SPOT.value)||0;   // USD/oz
+        const roe  = Number(ROE.value)||0;    // SLL per USD
+
+        const usdPerGram = spot>0 ? (spot / OZ_IN_G) : 0;
+        const sllPerGram = usdPerGram * roe;
+        const sllPerCarat = sllPerGram / 5;
         const target = sllPerCarat * 0.85;
- 
-         USDG.textContent     = fmtInt(usdPerGram);
-         SLLG.textContent     = fmtInt(sllPerGram);
-         SLLCARAT.textContent = fmtInt(sllPerCarat);
-         TARGET.textContent   = fmtInt(target);
- 
-         const store = {};
-         stateKeys.forEach(k => store[k] = $(k).value);
-         localStorage.setItem('gold_calc_v3_lbma', JSON.stringify(store));
-       }
- 
-       function parseLbmaJson(arr){
-         if (!Array.isArray(arr) || arr.length === 0) throw new Error('LBMA: empty');
-         const sorted = arr.slice().sort((a,b)=> (a.d||'').localeCompare(b.d));
-         const last = sorted[sorted.length - 1];
-         const date = last.d;
-         const usd = Number(Array.isArray(last.v) ? last.v[0] : NaN);
-         if (!isFinite(usd)) throw new Error('LBMA: USD not found');
-         return { usdPerOunce: usd, date };
-       }
- 
-       async function fetchLBMA(force=false){
-         const cacheKey = 'lbma_spot_cache_v3';
-         if(!force){
-           try{
-@@ -171,36 +182,41 @@
-           for (const attempt of wrapUrls(ep.url)){
-             try{
-               const resp = await fetch(attempt.url, { cache:'no-store' });
-               if(!resp.ok) throw new Error('HTTP '+resp.status);
-               const text = await resp.text();
-               const data = JSON.parse(text);
-               const { usdPerOunce, date } = parseLbmaJson(data);
- 
-               SPOT.value = usdPerOunce;
-               SPOTINFO.textContent = `LBMA ${ep.fix.toUpperCase()} fix for ${date}` + (attempt.via!=='direct' ? ` (via ${attempt.via})` : '');
-               WHICH.textContent = `${ep.fix.toUpperCase()} fix`;
-               localStorage.setItem(cacheKey, JSON.stringify({ date, value: usdPerOunce, fix: ep.fix }));
-               calc();
-               return;
-             } catch(e){ /* try next */ }
-           }
-         }
-         SPOT.placeholder = 'Enter LBMA price manually';
-         SPOTINFO.textContent = 'Could not fetch LBMA price. Enter manually.';
-         WHICH.textContent = '';
-       }
- 
-       ['input','change'].forEach(evt=>{
-         [SPOT, ROE].forEach(el => el.addEventListener(evt, calc));
-       });
+
+        USDG.textContent     = fmtInt(usdPerGram);
+        SLLG.textContent     = fmtInt(sllPerGram);
+        SLLCARAT.textContent = fmtInt(sllPerCarat);
+        TARGET.textContent   = fmtInt(target);
+
+        const store = {};
+        stateKeys.forEach(k => store[k] = $(k).value);
+        localStorage.setItem('gold_calc_v3_lbma', JSON.stringify(store));
+      }
+
+      function parseLbmaJson(arr){
+        if (!Array.isArray(arr) || arr.length === 0) throw new Error('LBMA: empty');
+        const sorted = arr.slice().sort((a,b)=> (a.d||'').localeCompare(b.d));
+        const last = sorted[sorted.length - 1];
+        const date = last.d;
+        const usd = Number(Array.isArray(last.v) ? last.v[0] : NaN);
+        if (!isFinite(usd)) throw new Error('LBMA: USD not found');
+        return { usdPerOunce: usd, date };
+      }
+
+      async function fetchLBMA(force=false){
+        const cacheKey = 'lbma_spot_cache_v3';
+        if(!force){
+          try{
+            const cached = JSON.parse(localStorage.getItem(cacheKey)||'{}');
+            if (cached && cached.value && cached.date) {
+              SPOT.value = cached.value;
+              SPOTINFO.textContent = `Using cached LBMA ${cached.fix} for ${cached.date}`;
+              WHICH.textContent = `${cached.fix.toUpperCase()} fix`;
+              calc();
+              return;
+            }
+          }catch(_){}
+        }
+
+        const endpoints = [
+          { fix: 'pm', url: 'https://prices.lbma.org.uk/json/gold_pm.json' },
+          { fix: 'am', url: 'https://prices.lbma.org.uk/json/gold_am.json' },
+        ];
+        const wrapUrls = (u)=>[
+          { url: u, via:'direct' },
+          { url: 'https://api.allorigins.win/raw?url='+encodeURIComponent(u), via:'allorigins' },
+        ];
+
+        for (const ep of endpoints){
+          for (const attempt of wrapUrls(ep.url)){
+            try{
+              const resp = await fetch(attempt.url, { cache:'no-store' });
+              if(!resp.ok) throw new Error('HTTP '+resp.status);
+              const text = await resp.text();
+              const data = JSON.parse(text);
+              const { usdPerOunce, date } = parseLbmaJson(data);
+
+              SPOT.value = usdPerOunce;
+              SPOTINFO.textContent = `LBMA ${ep.fix.toUpperCase()} fix for ${date}` + (attempt.via!=='direct' ? ` (via ${attempt.via})` : '');
+              WHICH.textContent = `${ep.fix.toUpperCase()} fix`;
+              localStorage.setItem(cacheKey, JSON.stringify({ date, value: usdPerOunce, fix: ep.fix }));
+              calc();
+              return;
+            } catch(e){ /* try next */ }
+          }
+        }
+        SPOT.placeholder = 'Enter LBMA price manually';
+        SPOTINFO.textContent = 'Could not fetch LBMA price. Enter manually.';
+        WHICH.textContent = '';
+      }
+
+      ['input','change'].forEach(evt=>{
+        [SPOT, ROE].forEach(el => el.addEventListener(evt, calc));
+      });
       ROE.addEventListener('blur', ()=>{
         enforceRoePrecision();
         calc();
       });
-       if (REFRESH) { REFRESH.addEventListener('click', ()=>fetchLBMA(true)); }
- 
-      formatRoe();
-       calc();
-       fetchLBMA(false);
-     })();
-   </script>
-    <div class="logo" style="text-align:center; margin: 12px 0;">
-   <img src="Borg Industries Logo.png" alt="My Logo" style="max-width:320px; height:auto;" />
- </div>
- </body>
- </html> 
-EOF
-)
+      if (REFRESH) { REFRESH.addEventListener('click', ()=>fetchLBMA(true)); }
+
+      calc();
+      fetchLBMA(false);
+    })();
+  </script>
+   <div class="logo" style="text-align:center; margin: 12px 0;">
+  <img src="Borg Industries Logo.png" alt="My Logo" style="max-width:320px; height:auto;" />
+</div>
+</body>
+</html>
