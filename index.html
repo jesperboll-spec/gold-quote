@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Gold Pricing Calculator — LBMA</title>
-  <meta name="description" content="LBMA-based gold calculator: pulls LBMA daily price, ROE to SLL, SLL per carat. Client-side." />
+  <meta name="description" content="LBMA-based gold calculator with ROE adjustments and fixed SLL discounts per carat." />
   <style>
     :root { color-scheme: light; }
     html, body { height: 100%; }
@@ -80,7 +80,7 @@
       <div class="kpi"><div class="label">SLL per gram</div><div class="value" id="sllPerGram">—</div></div>
       <div class="kpi"><div class="label">SLL per Carat</div><div class="value" id="sllPerCarat">—</div></div>
 
-      <!-- NEW: Pricing table replacing target/max lines -->
+      <!-- Pricing Table -->
       <div class="title" style="font-size:14px; margin-top:8px;">Pricing table (SLL per carat)</div>
       <table class="tbl" id="priceTable">
         <thead>
@@ -116,7 +116,7 @@
     </div>
 
     <div class="muted" style="margin-top:8px;">
-      Formulae: USD/g = USD/oz ÷ 31.1034768. SLL/g = USD/g × ROE. SLL/carat = (SLL/g) ÷ 5. Table cells = (LBMA USD/g × Multiplier × ROE ÷ 5).
+      Formulae: SLL/carat = (LBMA USD/g × (ROE − Adj) / 5) − Discount.
     </div>
     <div class="muted" style="margin-top:4px;">
       Disclaimer: LBMA data are published with a delay to midnight London time on the day set. Indicative use only.
@@ -131,7 +131,6 @@
       const REFRESH = $('refreshSpot');
       const SPOTINFO = $('spotInfo');
       const ROE = $('roe');
-
       const USDG = $('usdPerGram');
       const SLLG = $('sllPerGram');
       const SLLCARAT = $('sllPerCarat');
@@ -140,15 +139,15 @@
       const OZ_IN_G = 31.1034768;
       const stateKeys = ['spot','roe'];
 
-      // Multipliers from your screenshot (Today / Optimized)
-      const MULTS = {
-        breakeven: { today: 0.797, opt: 0.825 },
-        p3:        { today: 0.761, opt: 0.787 },
-        p6:        { today: 0.739, opt: 0.765 }, // Target
-        p8:        { today: 0.725, opt: 0.751 }
+      // Discounts & ROE adjustments
+      const TABLE = {
+        breakeven: { today: 98, opt: 82 },
+        p3: { today: 113, opt: 98 },
+        p6: { today: 127, opt: 113 }, // Target
+        p8: { today: 136, opt: 122 }
       };
+      const ROE_ADJ = { today: 0.41, opt: 0.32 };
 
-      // Locale-safe parse: "23,70" -> 23.70
       const parseNum = (v)=> {
         if (typeof v !== 'string') v = String(v ?? '');
         v = v.trim().replace(/\s+/g,'').replace(',', '.');
@@ -178,31 +177,24 @@
       }
 
       function fillTable(usdPerGram, roe){
-        // base in SLL per carat
-        const base = (usdPerGram * roe) / 5;
+        const effTodayROE = roe - ROE_ADJ.today;
+        const effOptROE = roe - ROE_ADJ.opt;
+        const baseToday = (usdPerGram * effTodayROE) / 5;
+        const baseOpt = (usdPerGram * effOptROE) / 5;
 
-        const cells = [
-          ['breakeven','today-breakeven',  MULTS.breakeven.today],
-          ['breakeven','opt-breakeven',    MULTS.breakeven.opt],
-          ['p3','today-3',                 MULTS.p3.today],
-          ['p3','opt-3',                   MULTS.p3.opt],
-          ['p6','today-6',                 MULTS.p6.today],
-          ['p6','opt-6',                   MULTS.p6.opt],
-          ['p8','today-8',                 MULTS.p8.today],
-          ['p8','opt-8',                   MULTS.p8.opt],
-        ];
-
-        cells.forEach(([key, id, m])=>{
-          const el = $(id);
-          if (!el) return;
-          const val = base * m;
-          el.textContent = fmtInt(val);
+        const rows = ['breakeven','p3','p6','p8'];
+        rows.forEach(key=>{
+          const todayVal = baseToday - TABLE[key].today;
+          const optVal = baseOpt - TABLE[key].opt;
+          const elToday = $('today-' + key.replace('p',''));
+          const elOpt = $('opt-' + key.replace('p',''));
+          if (elToday) elToday.textContent = fmtInt(todayVal);
+          if (elOpt) elOpt.textContent = fmtInt(optVal);
         });
       }
 
       function calc(){
         if (!SPOT || !ROE) return;
-
         const spot = parseNum(SPOT.value);   // USD/oz
         const roe  = parseNum(ROE.value);    // SLL per USD
 
@@ -231,16 +223,13 @@
         return { usdPerOunce: usd, date };
       }
 
-      // tiny helper for timeout
       async function fetchWithTimeout(url, ms=6000, opts={}){
         const ctrl = new AbortController();
         const t = setTimeout(()=>ctrl.abort(), ms);
         try {
           const resp = await fetch(url, { ...opts, signal: ctrl.signal, cache:'no-store' });
           return resp;
-        } finally {
-          clearTimeout(t);
-        }
+        } finally { clearTimeout(t); }
       }
 
       async function fetchLBMA(force=false){
@@ -287,9 +276,7 @@
               localStorage.setItem(cacheKey, JSON.stringify({ date, value: usdPerOunce, fix: ep.fix }));
               calc();
               return;
-            } catch(e){
-              lastError = (e && e.message) ? e.message : String(e);
-            }
+            } catch(e){ lastError = e.message || String(e); }
           }
         }
         SPOT.placeholder = 'Enter LBMA price manually';
@@ -297,9 +284,7 @@
         WHICH.textContent = '';
       }
 
-      ['input','change'].forEach(evt=>{
-        [SPOT, ROE].forEach(el => el && el.addEventListener(evt, calc));
-      });
+      ['input','change'].forEach(evt=>{ [SPOT, ROE].forEach(el => el && el.addEventListener(evt, calc)); });
       ROE && ROE.addEventListener('blur', ()=>{ enforceRoePrecision(); calc(); });
       REFRESH && REFRESH.addEventListener('click', ()=>fetchLBMA(true));
 
