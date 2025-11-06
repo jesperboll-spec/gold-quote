@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Doré Buying Price — Daily (SLL per Carat)</title>
-  <meta name="description" content="Shows yesterday's LBMA close, editable purity, 5-day average USD→SLE ROE, doré and SLL/carats. Handles weekends/non-trading by carrying last close." />
+  <meta name="description" content="Yesterday LBMA close, purity, 3-day average USD→SLE ROE; doré and SLL/carats. Weekends/holidays carry last trading close." />
   <style>
     :root { color-scheme: light; }
     html,body{height:100%;}
@@ -41,8 +41,8 @@
 </head>
 <body>
 <div class="wrap">
-  <div class="title">Doré Buying Price (SLL per Carat) <span class="pill">LBMA close • 5-day ROE avg</span></div>
-  <div class="subtitle">Columns use the <b>latest LBMA trading close</b>; weekends/holidays are filled automatically.</div>
+  <div class="title">Doré Buying Price (SLL per Carat) <span class="pill">LBMA close • 3-day ROE avg</span></div>
+  <div class="subtitle">Columns use the <b>latest LBMA trading close</b>; weekends/holidays are carried forward. FX averages over the last 3 trading-day closes.</div>
 
   <div class="card">
     <div class="row">
@@ -52,12 +52,12 @@
         <div class="muted">Prefilled 88.68 — editable.</div>
       </div>
       <div>
-        <label for="roe">ROE — SLL per 1 USD (5-day avg)</label>
+        <label for="roe">ROE — SLL per 1 USD (3-day avg)</label>
         <div class="actions">
           <input id="roe" type="text" inputmode="decimal" placeholder="Fetching…" />
           <button id="refreshFx" class="btn">Refresh FX</button>
         </div>
-        <div class="muted" id="rateInfo">Averages last 5 trading-day closes (USD→SLE). Fallback to latest only.</div>
+        <div class="muted" id="rateInfo">Averages last 3 trading-day closes (USD→SLE). Tries SLE; falls back via SLL ÷ 1000.</div>
       </div>
       <div><label>&nbsp;</label></div>
     </div>
@@ -95,9 +95,9 @@
 (async function(){
 const $=id=>document.getElementById(id);
 const OZ_IN_G=31.1034768;
-const STORAGE_KEY='dore_calc_v3';
+const STORAGE_KEY='dore_calc_v4'; // bump cache key
 
-// load saved
+// restore
 try{const s=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');
 if(s.purity)$('purity').value=s.purity;
 if(s.roe)$('roe').value=s.roe;}catch(_){}
@@ -107,108 +107,157 @@ const fmt2=n=>isFinite(n)?n.toFixed(2):'—';
 const parseNum=v=>{v=String(v??'').trim().replace(',','.');const n=Number(v);return isFinite(n)?n:0;};
 function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify({purity:$('purity').value,roe:$('roe').value}));}
 
+// --- helpers
 async function fetchWithTimeout(url,ms=7000){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);
 try{return await fetch(url,{signal:c.signal,cache:'no-store'});}finally{clearTimeout(t);}}
 
-// ---- LBMA ----
-async function getLbma(){
+async function fetchJSONViaProxies(url){
+  const routes=[
+    {url, via:'direct'},
+    {url:'https://api.allorigins.win/raw?url='+encodeURIComponent(url), via:'allorigins'},
+    {url:'https://thingproxy.freeboard.io/fetch/'+encodeURIComponent(url), via:'thingproxy'},
+    {url:'https://cors.isomorphic-git.org/'+url, via:'isomorphic-git'},
+    {url:'https://r.jina.ai/http/'+url.replace(/^https?:\/\//,'').replace(/^\/*/,'') , via:'jina'}
+  ];
+  let lastErr='';
+  for(const r of routes){
+    try{
+      const res=await fetchWithTimeout(r.url,8000);
+      if(!res.ok){lastErr='HTTP '+res.status; continue;}
+      const txt=await res.text();
+      const json=JSON.parse(txt);
+      return {json, via:r.via};
+    }catch(e){ lastErr=e.message||String(e); }
+  }
+  throw new Error('Proxied fetch failed: '+lastErr);
+}
+
+// --- LBMA series (PM→AM fallback)
+async function getLbmaSeries(){
   const eps=['https://prices.lbma.org.uk/json/gold_pm.json','https://prices.lbma.org.uk/json/gold_am.json'];
   for(const u of eps){
     try{
-      const r=await fetchWithTimeout(u);
-      if(!r.ok)continue;
-      const d=await r.json();
-      const s=d.map(x=>({date:x.d,usd:Number(x.v[0])})).filter(x=>isFinite(x.usd));
-      if(s.length)return s;
-    }catch(_){}
-  }throw new Error('LBMA failed');
+      const {json}=await fetchJSONViaProxies(u);
+      const s=(json||[]).map(x=>({date:x.d,usd:Number(x.v&&x.v[0])})).filter(x=>isFinite(x.usd))
+                       .sort((a,b)=>a.date.localeCompare(b.date));
+      if(s.length) return s;
+    }catch(_) {}
+  }
+  throw new Error('LBMA fetch failed');
 }
-function nearest(s,d){for(let i=s.length-1;i>=0;i--)if(s[i].date<=d)return s[i];return s[s.length-1];}
+function nearest(series, targetISO){
+  for(let i=series.length-1;i>=0;i--) if(series[i].date<=targetISO) return series[i];
+  return series[series.length-1];
+}
 
-// ---- FX 5-day average ----
-async function getSLE5DayAvg(){
+// --- ROE (3 trading days) with SLE + SLL fallbacks, via proxies ---
+async function getSLE3DayAvg(){
   const out={avg:null,dates:[],detail:''};
   const fmt=d=>d.toISOString().slice(0,10);
-  const today=new Date();const end=new Date(today);end.setDate(end.getDate()-1);
-  const start=new Date(end);start.setDate(start.getDate()-14);
+  const today=new Date(); const end=new Date(today); end.setDate(end.getDate()-1);
+  const start=new Date(end); start.setDate(start.getDate()-10); // ~2 weeks to capture 3 closes
 
   async function trySeries(base,sym,{invert=false,scale=1,label=''}={}){
     const url=`https://api.exchangerate.host/timeseries?base=${base}&symbols=${sym}&start_date=${fmt(start)}&end_date=${fmt(end)}`;
-    const r=await fetchWithTimeout(url);
-    if(!r.ok)return null;const j=await r.json();if(!j||!j.rates)return null;
-    const rows=Object.entries(j.rates).map(([d,o])=>{
-      let v=Number(o&&o[sym]);if(!isFinite(v))return null;
-      v*=scale;if(invert)v=v?1/v:NaN;return isFinite(v)?{date:d,rate:v}:null;
+    const {json,via}=await fetchJSONViaProxies(url);
+    if(!json||!json.rates) return null;
+    const rows=Object.entries(json.rates).map(([d,o])=>{
+      let v=Number(o && o[sym]);
+      if(!isFinite(v)) return null;
+      v=v*scale;
+      if(invert) v=v?1/v:NaN;
+      return isFinite(v)?{date:d,rate:v}:null;
     }).filter(Boolean).sort((a,b)=>a.date.localeCompare(b.date));
-    const last5=rows.slice(-5);if(last5.length<3)return null;
-    const avg=last5.reduce((s,x)=>s+x.rate,0)/last5.length;
-    return {avg,dates:last5.map(x=>x.date),src:`exchangerate.host ${base}->${sym}${invert?' (inv)':''}${label}`};
+    const last3=rows.slice(-3);
+    if(last3.length<3) return null;
+    const avg=last3.reduce((s,x)=>s+x.rate,0)/last3.length;
+    return {avg, dates:last3.map(x=>x.date), src:`exchangerate.host ${base}->${sym}${invert?' (inv)':''}${label} via ${via}`};
   }
 
   try{
-    let r=await trySeries('USD','SLE')||
-           await trySeries('SLE','USD',{invert:true})||
-           await trySeries('USD','SLL',{scale:1/1000,label:' via SLL÷1000'})||
-           await trySeries('SLL','USD',{invert:true,scale:1000,label:' via SLL×1000 (inv)'});
-    if(r){out.avg=r.avg;out.dates=r.dates;out.detail=`${r.src} (avg of 5 closes)`;return out;}
+    let r=
+      await trySeries('USD','SLE') ||
+      await trySeries('SLE','USD',{invert:true}) ||
+      await trySeries('USD','SLL',{scale:1/1000,label:' via SLL÷1000'}) ||
+      await trySeries('SLL','USD',{invert:true,scale:1000,label:' via SLL×1000 (inv)'});
+    if(r){ out.avg=r.avg; out.dates=r.dates; out.detail=`${r.src} (avg of 3 closes)`; return out; }
   }catch(_){}
 
+  // last resort: single latest (might be SLE or SLL)
   try{
-    const r=await fetchWithTimeout('https://open.er-api.com/v6/latest/USD');
-    if(r.ok){
-      const j=await r.json();let rate=Number(j?.rates?.SLE);
-      if(!isFinite(rate))rate=Number(j?.rates?.SLL)/1000;
-      if(isFinite(rate)){out.avg=rate;out.dates=['latest'];out.detail='open.er-api.com (latest only)';return out;}
-    }
+    const {json}=await fetchJSONViaProxies('https://open.er-api.com/v6/latest/USD');
+    let rate=Number(json?.rates?.SLE);
+    if(!isFinite(rate)) rate=Number(json?.rates?.SLL)/1000;
+    if(isFinite(rate)){ out.avg=rate; out.dates=['latest']; out.detail='open.er-api.com (latest only)'; return out; }
   }catch(_){}
-  out.detail='manual entry';return out;
+
+  out.detail='manual entry';
+  return out;
 }
 
+// --- math / render
 function compute(lbma,pur,roe){
   const dore=lbma*(pur/100);
-  return{dore,carat:((dore/OZ_IN_G)*roe*0.95)/5};
+  return { dore, carat: ((dore/31.1034768)*roe*0.95)/5 };
 }
-function render(c){
+function render(cols){
   ['0','1'].forEach((i,idx)=>{
-    $('lbmaC'+i).textContent=fmt2(c[idx].lbma);
-    $('purC'+i).textContent=fmt2(c[idx].purity);
-    $('roeC'+i).textContent=fmt2(c[idx].roe);
-    $('doreUsdC'+i).textContent=fmt2(c[idx].dore);
-    $('buySllC'+i).textContent=fmtInt(c[idx].carat);
+    $('lbmaC'+i).textContent=fmt2(cols[idx].lbma);
+    $('purC'+i).textContent=fmt2(cols[idx].purity);
+    $('roeC'+i).textContent=fmt2(cols[idx].roe);
+    $('doreUsdC'+i).textContent=fmt2(cols[idx].dore);
+    $('buySllC'+i).textContent=fmtInt(cols[idx].carat);
   });
 }
 
-async function run(auto=true){
-  const series=await getLbma();
-  const now=new Date();const loc=new Date(now.getTime()-now.getTimezoneOffset()*60000);
-  const today=loc.toISOString().slice(0,10);
-  const prev=d=>{const n=new Date(d);n.setDate(n.getDate()-1);return new Date(n.getTime()-n.getTimezoneOffset()*60000).toISOString().slice(0,10);};
-  const y=prev(loc);
-  const l0=nearest(series,y),l1=nearest(series,prev(y));
-  $('lbmaMeta').innerHTML=`Using LBMA PM fix: ${l0.date} & ${l1.date}`;
+async function run(autoFx=true){
+  // headers
+  const now=new Date(), local=new Date(now.getTime()-now.getTimezoneOffset()*60000);
+  const todayISO=local.toISOString().slice(0,10);
+  const prevISO=(d)=>{const n=new Date(d);n.setDate(n.getDate()-1);return new Date(n.getTime()-n.getTimezoneOffset()*60000).toISOString().slice(0,10);};
+  $('colToday').textContent=todayISO; $('colPrev').textContent=prevISO(local);
 
-  if(auto){
-    const fx=await getSLE5DayAvg();
-    if(fx.avg){$('roe').value=fx.avg.toFixed(2);
+  // lbma
+  const series=await getLbmaSeries();
+  const yISO=prevISO(local);
+  const l0=nearest(series,yISO);        // yesterday (or prior trading)
+  const l1=nearest(series,prevISO(yISO));
+  $('lbmaMeta').innerHTML=`Using LBMA fix: ${l0.date} & ${l1.date}`;
+
+  // fx
+  if(autoFx){
+    const fx=await getSLE3DayAvg();
+    if(fx.avg){
+      $('roe').value=fx.avg.toFixed(2);
       $('roeMeta').innerHTML=`${fmt2(fx.avg)} from ${fx.detail}`;
-      $('rateInfo').innerHTML=`Dates: ${fx.dates.join(', ')}`;}
-    else{$('roeMeta').innerHTML='<span class="warn">manual entry</span>';}
+      $('rateInfo').innerHTML=`Dates: ${fx.dates.join(', ')}`;
+    }else{
+      if(!$('roe').value) $('roe').value='23.70';
+      $('roeMeta').innerHTML='<span class="warn">manual entry</span>';
+    }
   }
 
-  const pur=parseNum($('purity').value),roe=parseNum($('roe').value);
-  const c0=compute(l0.usd,pur,roe),c1=compute(l1.usd,pur,roe);
-  render([{lbma:l0.usd,purity:pur,roe,dore:c0.dore,carat:c0.carat},
-          {lbma:l1.usd,purity:pur,roe,dore:c1.dore,carat:c1.carat}]);
+  // compute
+  const purity=parseNum($('purity').value);
+  const roe=parseNum($('roe').value);
+  const c0=compute(l0.usd,purity,roe);
+  const c1=compute(l1.usd,purity,roe);
+  render([
+    {lbma:l0.usd,purity,roe,dore:c0.dore,carat:c0.carat},
+    {lbma:l1.usd,purity,roe,dore:c1.dore,carat:c1.carat},
+  ]);
   save();
 }
 
 function recalc(){
-  const p=parseNum($('purity').value),r=parseNum($('roe').value);
-  const lb0=Number($('lbmaC0').textContent),lb1=Number($('lbmaC1').textContent);
+  const p=parseNum($('purity').value), r=parseNum($('roe').value);
+  const lb0=Number($('lbmaC0').textContent), lb1=Number($('lbmaC1').textContent);
   if(isFinite(lb0)&&isFinite(lb1)){
-    const c0=compute(lb0,p,r),c1=compute(lb1,p,r);
-    render([{lbma:lb0,purity:p,roe:r,dore:c0.dore,carat:c0.carat},
-            {lbma:lb1,purity:p,roe:r,dore:c1.dore,carat:c1.carat}]);
+    const c0=compute(lb0,p,r), c1=compute(lb1,p,r);
+    render([
+      {lbma:lb0,purity:p,roe:r,dore:c0.dore,carat:c0.carat},
+      {lbma:lb1,purity:p,roe:r,dore:c1.dore,carat:c1.carat},
+    ]);
     save();
   }
 }
@@ -217,13 +266,14 @@ function recalc(){
   $(id).addEventListener('input',recalc);
   $(id).addEventListener('change',recalc);
 });
-$('refreshFx').addEventListener('click',async()=>{
-  localStorage.removeItem(STORAGE_KEY);
-  $('roe').value='';$('roeMeta').textContent='—';
+$('refreshFx').addEventListener('click', async ()=>{
+  try{ localStorage.removeItem(STORAGE_KEY); }catch(_){}
+  $('roe').value=''; $('roeMeta').textContent='—';
   await run(true);
 });
 
-run(true).catch(e=>{$('lbmaSrc').innerHTML='<span class="err">'+e.message+'</span>';});
+// go
+run(true).catch(e=>{$('lbmaSrc').innerHTML='<span class="err">'+(e&&e.message?e.message:String(e))+'</span>';});
 })();
 </script>
 </body>
