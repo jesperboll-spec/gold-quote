@@ -13,23 +13,26 @@
     .wrap{max-width:880px;margin:0 auto;padding:16px;}
     .title{font-size:20px;font-weight:700;margin:6px 0 2px;}
     .pill{display:inline-block;margin-left:8px;padding:4px 8px;font-size:12px;background:#f1f5f9;border-radius:999px;color:#334155;}
+
     .card{background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:16px;box-shadow:0 8px 24px rgba(0,0,0,.06);margin-top:12px;}
     label{display:block;font-size:12px;color:#475569;margin-bottom:6px;}
-    input,button{padding:12px;border:1px solid #d1d5db;border-radius:12px;font-size:14px;background:#fff;}
-    input{width:100%;}
+    input,button{border:1px solid #d1d5db;border-radius:12px;font-size:14px;background:#fff;}
+    input{width:100%;height:48px;padding:0 12px;}
     input:focus{outline:none;border-color:#3b82f6;box-shadow:0 0 0 3px rgba(59,130,246,.2);}
-    .btn{cursor:pointer;background:#0f172a;color:#fff;border:none;}
+    .btn{cursor:pointer;background:#0f172a;color:#fff;border:none;height:48px;padding:0 16px;display:inline-flex;align-items:center;justify-content:center;border-radius:12px;}
     .btn:disabled{opacity:.6;cursor:default;}
     .muted{color:#64748b;font-size:12px;}
+
     .row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;}
     @media(max-width:760px){.row{grid-template-columns:1fr;}}
+    .actions{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:stretch;}
+
     .kpis{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:8px;}
     @media(max-width:760px){.kpis{grid-template-columns:1fr;}}
     .kpi{background:#f8fafc;border:1px dashed #e2e8f0;border-radius:12px;padding:12px;}
     .kpi .label{color:#475569;font-size:12px;margin-bottom:4px;}
-    .kpi .value{font-variant-numeric:tabular-nums;font-weight:600;}
-    /* Make these two meta lines normal size/weight */
-    #lbmaMeta, #roeMeta { font-weight:400; font-size:12px; }
+    .kpi .value{font-variant-numeric:tabular-nums;font-weight:400;font-size:12px;} /* normal size/weight */
+
     .tbl{width:100%;border-collapse:collapse;margin-top:8px;background:#fff;}
     .tbl th,.tbl td{padding:12px 10px;text-align:right;border-top:1px dashed #e2e8f0;font-variant-numeric:tabular-nums;}
     .tbl th:first-child,.tbl td:first-child{text-align:left;color:#475569;width:40%;}
@@ -37,7 +40,6 @@
     .src{font-size:12px;color:#475569;margin-top:8px;}
     .warn{color:#b45309;}
     .err{color:#b91c1c;}
-    .actions{display:flex;gap:8px;align-items:center;}
   </style>
 </head>
 <body>
@@ -57,7 +59,6 @@
           <input id="roe" type="text" inputmode="decimal" placeholder="Fetching…" />
           <button id="refreshFx" class="btn">Refresh FX</button>
         </div>
-        <!-- removed the yellow explanatory line -->
         <div class="muted" id="rateInfo"></div>
       </div>
       <div><label>&nbsp;</label></div>
@@ -79,11 +80,12 @@
         <tr><td>Purity</td><td id="purC0">—</td><td id="purC1">—</td></tr>
         <tr><td>ROE (SLL per USD)</td><td id="roeC0">—</td><td id="roeC1">—</td></tr>
         <tr><td>Doré (USD / troy oz)</td><td id="doreUsdC0">—</td><td id="doreUsdC1">—</td></tr>
+        <tr><td><strong>Doré (SLL / carat, no discount)</strong></td><td id="doreSllC0">—</td><td id="doreSllC1">—</td></tr>
         <tr><td>Buying price (SLL / carat)</td><td id="buySllC0">—</td><td id="buySllC1">—</td></tr>
       </tbody>
     </table>
     <div class="src" id="lbmaSrc">Source: LBMA daily auction (delayed), PM preferred.</div>
-    <div class="src">Formula: (Doré USD × ROE × 0.95 / 31.1034768) ÷ 5 = SLL / carat.</div>
+    <div class="src">Formula: Doré USD/oz = LBMA × (Purity%/100). Doré SLL/carat = (Doré USD/oz ÷ 31.1034768 × ROE) ÷ 5. Buying = Doré SLL/carat × 0.95.</div>
   </div>
 
   <div class="logo" style="text-align:center;margin:12px 0;">
@@ -95,14 +97,14 @@
 (async function(){
 const $=id=>document.getElementById(id);
 const OZ_IN_G=31.1034768;
-const STORAGE_KEY='dore_calc_v5'; // bump cache
+const STORAGE_KEY='dore_calc_v6'; // bump cache
 
 // restore
 try{const s=JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');
 if(s.purity)$('purity').value=s.purity;
 if(s.roe)$('roe').value=s.roe;}catch(_){}
 
-const fmtInt=n=>isFinite(n)?Math.round(n).toLocaleString():'—';       // whole number, 1,000 sep
+const fmtInt=n=>isFinite(n)?Math.round(n).toLocaleString():'—';       // integers with 1,000 sep
 const fmt2=n=>isFinite(n)?n.toFixed(2):'—';
 const fmtPct=n=>isFinite(n)?n.toFixed(2)+'%':'—';
 const parseNum=v=>{v=String(v??'').trim().replace(',','.');const n=Number(v);return isFinite(n)?n:0;};
@@ -111,7 +113,7 @@ function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify({purity:$('purit
 async function fetchWithTimeout(url,ms=7000){const c=new AbortController();const t=setTimeout(()=>c.abort(),ms);
 try{return await fetch(url,{signal:c.signal,cache:'no-store'});}finally{clearTimeout(t);}}
 
-// Proxied JSON fetcher
+// proxied JSON
 async function fetchJSONViaProxies(url){
   const routes=[
     {url, via:'direct'},
@@ -120,29 +122,28 @@ async function fetchJSONViaProxies(url){
     {url:'https://cors.isomorphic-git.org/'+url, via:'isomorphic-git'},
     {url:'https://r.jina.ai/http/'+url.replace(/^https?:\/\//,'').replace(/^\/*/,'') , via:'jina'}
   ];
-  let lastErr='';
   for(const r of routes){
     try{
       const res=await fetchWithTimeout(r.url,8000);
-      if(!res.ok){lastErr='HTTP '+res.status; continue;}
+      if(!res.ok) continue;
       const txt=await res.text();
-      const json=JSON.parse(txt);
-      return {json, via:r.via};
-    }catch(e){ lastErr=e.message||String(e); }
+      return {json:JSON.parse(txt), via:r.via};
+    }catch(_){}
   }
-  throw new Error('Proxied fetch failed: '+lastErr);
+  throw new Error('Proxied fetch failed');
 }
 
-// LBMA (PM -> AM)
+// LBMA (PM→AM)
 async function getLbmaSeries(){
   const eps=['https://prices.lbma.org.uk/json/gold_pm.json','https://prices.lbma.org.uk/json/gold_am.json'];
   for(const u of eps){
     try{
       const {json}=await fetchJSONViaProxies(u);
-      const s=(json||[]).map(x=>({date:x.d,usd:Number(x.v&&x.v[0])})).filter(x=>isFinite(x.usd))
+      const s=(json||[]).map(x=>({date:x.d,usd:Number(x.v&&x.v[0])}))
+                        .filter(x=>isFinite(x.usd))
                         .sort((a,b)=>a.date.localeCompare(b.date));
       if(s.length) return s;
-    }catch(_) {}
+    }catch(_){}
   }
   throw new Error('LBMA fetch failed');
 }
@@ -151,38 +152,36 @@ function nearest(series, targetISO){
   return series[series.length-1];
 }
 
-// 3-day average USD→SLE (with SLL fallback)
+// 3-day ROE avg (USD→SLE, with SLL fallback)
 async function getSLE3DayAvg(){
   const out={avg:null,dates:[],detail:''};
   const fmt=d=>d.toISOString().slice(0,10);
   const today=new Date(); const end=new Date(today); end.setDate(end.getDate()-1);
   const start=new Date(end); start.setDate(start.getDate()-10);
 
-  async function trySeries(base,sym,{invert=false,scale=1,label=''}={}){
+  async function series(base,sym,{invert=false,scale=1,label=''}={}){
     const url=`https://api.exchangerate.host/timeseries?base=${base}&symbols=${sym}&start_date=${fmt(start)}&end_date=${fmt(end)}`;
     const {json,via}=await fetchJSONViaProxies(url);
     if(!json||!json.rates) return null;
     const rows=Object.entries(json.rates).map(([d,o])=>{
-      let v=Number(o && o[sym]);
-      if(!isFinite(v)) return null;
-      v=v*scale;
-      if(invert) v=v?1/v:NaN;
+      let v=Number(o&&o[sym]); if(!isFinite(v)) return null;
+      v=v*scale; if(invert) v=v?1/v:NaN;
       return isFinite(v)?{date:d,rate:v}:null;
     }).filter(Boolean).sort((a,b)=>a.date.localeCompare(b.date));
-    const last3=rows.slice(-3);
-    if(last3.length<3) return null;
+    const last3=rows.slice(-3); if(last3.length<3) return null;
     const avg=last3.reduce((s,x)=>s+x.rate,0)/last3.length;
-    return {avg, dates:last3.map(x=>x.date), src:`exchangerate.host ${base}->${sym}${invert?' (inv)':''}${label} via ${via}`};
+    return {avg,dates:last3.map(x=>x.date),src:`exchangerate.host ${base}->${sym}${invert?' (inv)':''}${label} via ${via}`};
   }
 
+  let r=null;
   try{
-    let r=
-      await trySeries('USD','SLE') ||
-      await trySeries('SLE','USD',{invert:true}) ||
-      await trySeries('USD','SLL',{scale:1/1000,label:' via SLL÷1000'}) ||
-      await trySeries('SLL','USD',{invert:true,scale:1000,label:' via SLL×1000 (inv)'});
-    if(r){ out.avg=r.avg; out.dates=r.dates; out.detail=`${r.src} (avg of 3 closes)`; return out; }
+    r = await series('USD','SLE') ||
+        await series('SLE','USD',{invert:true}) ||
+        await series('USD','SLL',{scale:1/1000,label:' via SLL÷1000'}) ||
+        await series('SLL','USD',{invert:true,scale:1000,label:' via SLL×1000 (inv)'});
   }catch(_){}
+
+  if(r){ out.avg=r.avg; out.dates=r.dates; out.detail=`${r.src} (avg of 3 closes)`; return out; }
 
   try{
     const {json}=await fetchJSONViaProxies('https://open.er-api.com/v6/latest/USD');
@@ -190,32 +189,36 @@ async function getSLE3DayAvg(){
     if(!isFinite(rate)) rate=Number(json?.rates?.SLL)/1000;
     if(isFinite(rate)){ out.avg=rate; out.dates=['latest']; out.detail='open.er-api.com (latest only)'; return out; }
   }catch(_){}
-
-  out.detail='manual entry';
-  return out;
+  out.detail='manual entry'; return out;
 }
 
-// math / render
+// math
 function compute(lbma,pur,roe){
-  const dore=lbma*(pur/100);
-  return { dore, carat: ((dore/31.1034768)*roe*0.95)/5 };
+  const doreUsd = lbma*(pur/100);
+  const doreSllCarat = (doreUsd / OZ_IN_G * roe) / 5;     // no discount
+  const buySllCarat  = doreSllCarat * 0.95;               // 5% discount
+  return { doreUsd, doreSllCarat, buySllCarat };
 }
+
+// render
 function render(cols){
-  // LBMA: integers with thousand separators
   $('lbmaC0').textContent = fmtInt(cols[0].lbma);
   $('lbmaC1').textContent = fmtInt(cols[1].lbma);
-  // Purity with %
+
   $('purC0').textContent  = fmtPct(cols[0].purity);
   $('purC1').textContent  = fmtPct(cols[1].purity);
-  // ROE as 2dp
+
   $('roeC0').textContent  = fmt2(cols[0].roe);
   $('roeC1').textContent  = fmt2(cols[1].roe);
-  // Doré keep 2dp
-  $('doreUsdC0').textContent = fmt2(cols[0].dore);
-  $('doreUsdC1').textContent = fmt2(cols[1].dore);
-  // SLL / carat integer
-  $('buySllC0').textContent = fmtInt(cols[0].carat);
-  $('buySllC1').textContent = fmtInt(cols[1].carat);
+
+  $('doreUsdC0').textContent = fmt2(cols[0].doreUsd);
+  $('doreUsdC1').textContent = fmt2(cols[1].doreUsd);
+
+  $('doreSllC0').textContent = fmtInt(cols[0].doreSllCarat);
+  $('doreSllC1').textContent = fmtInt(cols[1].doreSllCarat);
+
+  $('buySllC0').textContent = fmtInt(cols[0].buySllCarat);
+  $('buySllC1').textContent = fmtInt(cols[1].buySllCarat);
 }
 
 async function run(autoFx=true){
@@ -228,7 +231,6 @@ async function run(autoFx=true){
   const yISO=prevISO(local);
   const l0=nearest(series,yISO);
   const l1=nearest(series,prevISO(yISO));
-  // normal weight, no bold/strong
   $('lbmaMeta').textContent = `Using LBMA fix: ${l0.date} & ${l1.date}`;
 
   if(autoFx){
@@ -236,7 +238,7 @@ async function run(autoFx=true){
     if(fx.avg){
       $('roe').value=fx.avg.toFixed(2);
       $('roeMeta').textContent = `${fmt2(fx.avg)} from ${fx.detail}`;
-      $('rateInfo').textContent = ''; // keep empty per request
+      $('rateInfo').textContent = '';
     }else{
       if(!$('roe').value) $('roe').value='23.70';
       $('roeMeta').innerHTML='<span class="warn">manual entry</span>';
@@ -247,22 +249,23 @@ async function run(autoFx=true){
   const roe=parseNum($('roe').value);
   const c0=compute(l0.usd,purity,roe);
   const c1=compute(l1.usd,purity,roe);
+
   render([
-    {lbma:l0.usd,purity,roe,dore:c0.dore,carat:c0.carat},
-    {lbma:l1.usd,purity,roe,dore:c1.dore,carat:c1.carat},
+    {lbma:l0.usd,purity,roe,doreUsd:c0.doreUsd,doreSllCarat:c0.doreSllCarat,buySllCarat:c0.buySllCarat},
+    {lbma:l1.usd,purity,roe,doreUsd:c1.doreUsd,doreSllCarat:c1.doreSllCarat,buySllCarat:c1.buySllCarat}
   ]);
   save();
 }
 
 function recalc(){
   const p=parseNum($('purity').value), r=parseNum($('roe').value);
-  const lb0=Number($('lbmaC0').textContent.replace(/,/g,'')); // remove commas to parse
+  const lb0=Number($('lbmaC0').textContent.replace(/,/g,'')); 
   const lb1=Number($('lbmaC1').textContent.replace(/,/g,''));
   if(isFinite(lb0)&&isFinite(lb1)){
     const c0=compute(lb0,p,r), c1=compute(lb1,p,r);
     render([
-      {lbma:lb0,purity:p,roe:r,dore:c0.dore,carat:c0.carat},
-      {lbma:lb1,purity:p,roe:r,dore:c1.dore,carat:c1.carat},
+      {lbma:lb0,purity:p,roe:r,doreUsd:c0.doreUsd,doreSllCarat:c0.doreSllCarat,buySllCarat:c0.buySllCarat},
+      {lbma:lb1,purity:p,roe:r,doreUsd:c1.doreUsd,doreSllCarat:c1.doreSllCarat,buySllCarat:c1.buySllCarat}
     ]);
     save();
   }
@@ -272,6 +275,7 @@ function recalc(){
   $(id).addEventListener('input',recalc);
   $(id).addEventListener('change',recalc);
 });
+
 $('refreshFx').addEventListener('click', async ()=>{
   try{ localStorage.removeItem(STORAGE_KEY); }catch(_){}
   $('roe').value=''; $('roeMeta').textContent='—';
