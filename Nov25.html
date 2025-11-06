@@ -204,56 +204,60 @@
         throw new Error('Could not fetch LBMA. '+lastError);
       }
 
-      // --- ROE (USD→SLE) last 3 closes average ---
-      // Try a few public endpoints; if SLE unsupported, leave editable.
-      async function getSLE3DayAvg(){
-        const out = { avg:null, dates:[], source:'auto', detail:'' };
+      // --- ROE (USD→SLE) last 5 trading-day closes average ---
+async function getSLE5DayAvg(){
+  const out = { avg:null, dates:[], source:'auto', detail:'' };
 
-        // 1) exchangerate.host timeseries (often supports SLE)
-        try{
-          const today = new Date();
-          const end = new Date(today); end.setDate(end.getDate()-1); // yesterday calendar
-          const start = new Date(end); start.setDate(start.getDate()-10); // lookback 10d to collect 3 closes
-          const fmt = (d)=> d.toISOString().slice(0,10);
-          const url = `https://api.exchangerate.host/timeseries?base=USD&symbols=SLE&start_date=${fmt(start)}&end_date=${fmt(end)}`;
-          const r = await fetchWithTimeout(url, 6000);
-          if (r.ok){
-            const j = await r.json();
-            if (j && j.rates){
-              const entries = Object.entries(j.rates)
-                .map(([d, obj])=> ({ date:d, rate: Number(obj && obj.SLE) }))
-                .filter(x=> isFinite(x.rate))
-                .sort((a,b)=> a.date.localeCompare(b.date));
-              const last3 = entries.slice(-3);
-              if (last3.length >= 3){
-                const avg = last3.reduce((s,x)=>s+x.rate,0)/3;
-                out.avg = avg;
-                out.dates = last3.map(x=>x.date);
-                out.detail = 'exchangerate.host (timeseries)';
-                return out;
-              }
-            }
-          }
-        }catch(_){}
+  try{
+    const today = new Date();
+    const end = new Date(today);
+    end.setDate(end.getDate() - 1);               // yesterday
+    const start = new Date(end);
+    start.setDate(start.getDate() - 10);          // look back ~2 weeks to catch 5 trading days
+    const fmt = (d)=> d.toISOString().slice(0,10);
 
-        // 2) open.er-api.com latest (fallback, not guaranteed to have SLE)
-        try{
-          const r = await fetchWithTimeout('https://open.er-api.com/v6/latest/USD', 6000);
-          if (r.ok){
-            const j = await r.json();
-            const rate = j && j.rates && Number(j.rates.SLE);
-            if (isFinite(rate)){
-              out.avg = rate; out.dates = ['latest']; out.detail = 'open.er-api.com (latest only)';
-              return out;
-            }
-          }
-        }catch(_){}
+    const url = `https://api.exchangerate.host/timeseries?base=USD&symbols=SLE&start_date=${fmt(start)}&end_date=${fmt(end)}`;
+    const r = await fetchWithTimeout(url, 6000);
+    if (r.ok){
+      const j = await r.json();
+      if (j && j.rates){
+        const entries = Object.entries(j.rates)
+          .map(([d, obj]) => ({ date:d, rate:Number(obj && obj.SLE) }))
+          .filter(x => isFinite(x.rate))
+          .sort((a,b)=> a.date.localeCompare(b.date));
 
-        // No luck. Leave null; UI will keep field editable.
-        out.source = 'manual';
-        out.detail = 'No public timeseries with SLE found; please enter manually.';
+        const last5 = entries.slice(-5);          // last 5 valid closes
+        if (last5.length >= 3){
+          const avg = last5.reduce((s,x)=> s+x.rate, 0) / last5.length;
+          out.avg = avg;
+          out.dates = last5.map(x=>x.date);
+          out.detail = `exchangerate.host (avg of ${last5.length} latest trading-day closes)`;
+          return out;
+        }
+      }
+    }
+  }catch(_){}
+
+  // Fallback: single latest rate if 5-day series not found
+  try{
+    const r = await fetchWithTimeout('https://open.er-api.com/v6/latest/USD', 6000);
+    if (r.ok){
+      const j = await r.json();
+      const rate = j && j.rates && Number(j.rates.SLE);
+      if (isFinite(rate)){
+        out.avg = rate;
+        out.dates = ['latest'];
+        out.detail = 'open.er-api.com (latest only)';
         return out;
       }
+    }
+  }catch(_){}
+
+  out.source = 'manual';
+  out.detail = 'No 5-day SLE series found; enter manually.';
+  return out;
+}
+
 
       function computeRows(lbmaUsdOz, purityPct, roe){
         const purity = purityPct/100;
@@ -319,7 +323,7 @@
           (lbmaVia!=='direct' ? ` <span class="muted">(via ${lbmaVia})</span>` : '');
 
         // Try to auto compute ROE (3-day average of closes)
-        let roeAuto = await getSLE3DayAvg();
+        let roeAuto = await getSLE5DayAvg();
         if (roeAuto.avg){
           Roe.value = Number(roeAuto.avg).toFixed(2);
           $('roeMeta').innerHTML = `${fmt2(roeAuto.avg)} <span class="muted">from ${roeAuto.detail}</span>`;
