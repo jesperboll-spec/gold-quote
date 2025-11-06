@@ -4,26 +4,23 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Doré Buying Price — Daily (SLL per Carat)</title>
-  <meta name="description" content="Shows yesterday's LBMA close, editable purity, 3-day average USD→SLE ROE, doré and SLL/carats. Handles weekends/non-trading by carrying last close." />
+  <meta name="description" content="Shows yesterday's LBMA close, editable purity, 5-day average USD→SLE ROE, doré and SLL/carats. Handles weekends/non-trading by carrying last close." />
   <style>
     :root { color-scheme: light; }
     html, body { height: 100%; }
-    body {
-      margin: 0;
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial;
-      color: #0f172a; background:#f8fafc;
-    }
+    body { margin:0; font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Inter, Helvetica, Arial; color:#0f172a; background:#f8fafc; }
     * { box-sizing: border-box; }
     .wrap { max-width: 880px; margin: 0 auto; padding: 16px; }
     .title { font-size: 20px; font-weight: 700; margin: 6px 0 2px; }
     .pill { display:inline-block; margin-left:8px; padding:4px 8px; font-size:12px; background:#f1f5f9; border-radius:999px; color:#334155; }
-    .subtitle { font-size: 13px; color: #64748b; }
+    .subtitle { font-size: 13px; color:#64748b; }
     .card { background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:16px; box-shadow:0 8px 24px rgba(0,0,0,.06); margin-top:12px; }
     label { display:block; font-size:12px; color:#475569; margin-bottom:6px; }
-    input {
-      width:100%; padding:12px; border:1px solid #d1d5db; border-radius:12px; font-size:14px; background:#fff;
-    }
+    input, button { padding:12px; border:1px solid #d1d5db; border-radius:12px; font-size:14px; background:#fff; }
+    input { width:100%; }
     input:focus { outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.2); }
+    .btn { cursor:pointer; background:#0f172a; color:#fff; border:none; }
+    .btn:disabled { opacity:.6; cursor:default; }
     .muted { color:#64748b; font-size:12px; }
     .row { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; }
     @media (max-width: 760px) { .row { grid-template-columns: 1fr; } }
@@ -40,13 +37,13 @@
     .ok { color:#16a34a; }
     .warn { color:#b45309; }
     .err { color:#b91c1c; }
-    .pill-mini { display:inline-block; margin-left:6px; padding:2px 6px; font-size:11px; border-radius:999px; background:#0ea5e9; color:#fff; vertical-align:middle; }
+    .actions { display:flex; gap:8px; align-items:center; }
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="title">Doré Buying Price (SLL per Carat) <span class="pill">LBMA close • 3-day ROE avg</span></div>
-    <div class="subtitle">Columns are labeled with today and yesterday; values use the **latest trading close** so weekends/holidays won’t create gaps. Inputs persist locally.</div>
+    <div class="title">Doré Buying Price (SLL per Carat) <span class="pill">LBMA close • 5-day ROE avg</span></div>
+    <div class="subtitle">Columns are labeled with today and yesterday; values use the <b>latest trading close</b> so weekends/holidays don’t create gaps. Inputs persist locally.</div>
 
     <div class="card">
       <div class="row">
@@ -56,13 +53,16 @@
           <div class="muted">Prefilled 88.68 — editable.</div>
         </div>
         <div>
-          <label for="roe">ROE — SLL per 1 USD (3-day close avg)</label>
-          <input id="roe" type="text" inputmode="decimal" placeholder="Fetching…" />
+          <label for="roe">ROE — SLL per 1 USD (5-day close avg)</label>
+          <div class="actions">
+            <input id="roe" type="text" inputmode="decimal" placeholder="Fetching…" />
+            <button id="refreshFx" class="btn" title="Re-pull the 5-day FX average">Refresh FX</button>
+          </div>
           <div class="muted">Auto if available; otherwise edit manually.</div>
         </div>
         <div>
           <label>&nbsp;</label>
-          <div class="muted" id="rateInfo">Source: Google Finance equivalent (USD→SLE) aggregated; with graceful fallback.</div>
+          <div class="muted" id="rateInfo">Will average last 5 trading-day closes (USD→SLE). Falls back to latest only if timeseries unavailable.</div>
         </div>
       </div>
 
@@ -72,7 +72,7 @@
           <div class="value" id="lbmaMeta">—</div>
         </div>
         <div class="kpi">
-          <div class="label">ROE (avg of last 3 closes)</div>
+          <div class="label">ROE Source</div>
           <div class="value" id="roeMeta">—</div>
         </div>
       </div>
@@ -91,7 +91,7 @@
         <tbody>
           <tr><td>LBMA, yesterday close (USD / troy oz)</td><td id="lbmaC0">—</td><td id="lbmaC1">—</td></tr>
           <tr><td>Purity (%)</td><td id="purC0">—</td><td id="purC1">—</td></tr>
-          <tr><td>ROE (SLL per USD, 3-day close avg)</td><td id="roeC0">—</td><td id="roeC1">—</td></tr>
+          <tr><td>ROE (SLL per USD, 5-day close avg)</td><td id="roeC0">—</td><td id="roeC1">—</td></tr>
           <tr><td>Doré price (USD / troy oz)</td><td id="doreUsdC0">—</td><td id="doreUsdC1">—</td></tr>
           <tr><td>Buying price (SLL / carat) — 5% off doré, ×ROE, ÷5</td><td id="buySllC0">—</td><td id="buySllC1">—</td></tr>
         </tbody>
@@ -113,40 +113,39 @@
     (function(){
       const $ = (id)=>document.getElementById(id);
       const OZ_IN_G = 31.1034768;
+      const STORAGE_KEY = 'dore_calc_v2'; // bumped to avoid old cached ROE
 
-      // Persisted state
-      const stateKeys = ['purity','roe'];
       // Load persisted inputs
       try {
-        const saved = JSON.parse(localStorage.getItem('dore_calc_v1')||'{}');
-        stateKeys.forEach(k => { if (saved[k] !== undefined && $(k)) $(k).value = saved[k]; });
-      } catch(_){}
+        const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+        if (saved.purity && $('purity')) $('purity').value = saved.purity;
+        if (saved.roe && $('roe')) $('roe').value = saved.roe;
+      } catch(_) {}
 
       const Purity = $('purity');
       const Roe = $('roe');
+      const RefreshFx = $('refreshFx');
 
       const fmtInt = (n)=> isFinite(n) ? Math.round(n).toLocaleString() : '—';
       const fmt2 = (n)=> isFinite(n) ? n.toFixed(2) : '—';
-
-      function parseNum(v){
+      const parseNum = (v)=> {
         if (typeof v !== 'string') v = String(v ?? '');
         v = v.trim().replace(/\s+/g,'').replace(',', '.');
         const n = Number(v);
         return isFinite(n) ? n : 0;
-      }
+      };
 
       function saveState(){
-        const store = {};
-        stateKeys.forEach(k => store[k] = $(k).value);
-        localStorage.setItem('dore_calc_v1', JSON.stringify(store));
+        const store = { purity: Purity.value, roe: Roe.value };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
       }
 
       function setColHeaders(){
         const now = new Date();
-        const tzNow = new Date(now.getTime() - now.getTimezoneOffset()*60000); // keep local
-        const todayStr = tzNow.toISOString().slice(0,10);
-        const yest = new Date(tzNow); yest.setDate(yest.getDate()-1);
-        const yestStr = yest.toISOString().slice(0,10);
+        const local = new Date(now.getTime() - now.getTimezoneOffset()*60000);
+        const todayStr = local.toISOString().slice(0,10);
+        const yest = new Date(local); yest.setDate(yest.getDate()-1);
+        const yestStr = new Date(yest.getTime() - yest.getTimezoneOffset()*60000).toISOString().slice(0,10);
         $('colToday').textContent = todayStr;
         $('colPrev').textContent = yestStr;
         $('todayNote').textContent = todayStr;
@@ -161,6 +160,7 @@
         } finally { clearTimeout(t); }
       }
 
+      // ----- LBMA fetch (PM preferred; AM fallback) -----
       function parseLbmaJson(arr){
         if (!Array.isArray(arr) || arr.length === 0) throw new Error('LBMA: empty');
         const sorted = arr.slice().sort((a,b)=> (a.d||'').localeCompare(b.d));
@@ -196,7 +196,6 @@
               const data = JSON.parse(text);
               const series = parseLbmaJson(data);
               if (series.length < 2) throw new Error('LBMA: insufficient data');
-              // prefer PM; if PM fails, AM is fine; return with meta
               return { series, fix: ep.fix, via: attempt.via };
             }catch(e){ lastError = e.message || String(e); }
           }
@@ -204,60 +203,69 @@
         throw new Error('Could not fetch LBMA. '+lastError);
       }
 
-      // --- ROE (USD→SLE) last 5 trading-day closes average ---
-async function getSLE5DayAvg(){
-  const out = { avg:null, dates:[], source:'auto', detail:'' };
+      // ----- ROE (USD→SLE) 5 trading-day avg with inversion fallback -----
+      async function getSLE5DayAvg(){
+        const out = { avg:null, dates:[], source:'auto', detail:'' };
 
-  try{
-    const today = new Date();
-    const end = new Date(today);
-    end.setDate(end.getDate() - 1);               // yesterday
-    const start = new Date(end);
-    start.setDate(start.getDate() - 10);          // look back ~2 weeks to catch 5 trading days
-    const fmt = (d)=> d.toISOString().slice(0,10);
+        const fmt = d => d.toISOString().slice(0,10);
+        const today = new Date();
+        const end = new Date(today); end.setDate(end.getDate()-1);      // yesterday
+        const start = new Date(end);  start.setDate(start.getDate()-14); // ~2 weeks to collect 5 trading closes
 
-    const url = `https://api.exchangerate.host/timeseries?base=USD&symbols=SLE&start_date=${fmt(start)}&end_date=${fmt(end)}`;
-    const r = await fetchWithTimeout(url, 6000);
-    if (r.ok){
-      const j = await r.json();
-      if (j && j.rates){
-        const entries = Object.entries(j.rates)
-          .map(([d, obj]) => ({ date:d, rate:Number(obj && obj.SLE) }))
-          .filter(x => isFinite(x.rate))
-          .sort((a,b)=> a.date.localeCompare(b.date));
+        async function tryTimeseries(base, symbols, invert=false){
+          const url = `https://api.exchangerate.host/timeseries?base=${base}&symbols=${symbols}&start_date=${fmt(start)}&end_date=${fmt(end)}`;
+          const r = await fetchWithTimeout(url, 6000);
+          if (!r.ok) return null;
+          const j = await r.json();
+          if (!j || !j.rates) return null;
 
-        const last5 = entries.slice(-5);          // last 5 valid closes
-        if (last5.length >= 3){
+          const key = symbols;
+          const rows = Object.entries(j.rates)
+            .map(([d, obj]) => {
+              const val = Number(obj && obj[key]);
+              if (!isFinite(val)) return null;
+              return { date:d, rate: invert ? (val ? 1/val : NaN) : val };
+            })
+            .filter(Boolean)
+            .sort((a,b)=> a.date.localeCompare(b.date));
+
+          const last5 = rows.slice(-5);
+          if (last5.length < 5) return null;
+
           const avg = last5.reduce((s,x)=> s+x.rate, 0) / last5.length;
-          out.avg = avg;
-          out.dates = last5.map(x=>x.date);
-          out.detail = `exchangerate.host (avg of ${last5.length} latest trading-day closes)`;
-          return out;
+          return { avg, dates: last5.map(x=>x.date), provider:`exchangerate.host ${base}->${symbols}${invert?' (inverted)':''}` };
         }
-      }
-    }
-  }catch(_){}
 
-  // Fallback: single latest rate if 5-day series not found
-  try{
-    const r = await fetchWithTimeout('https://open.er-api.com/v6/latest/USD', 6000);
-    if (r.ok){
-      const j = await r.json();
-      const rate = j && j.rates && Number(j.rates.SLE);
-      if (isFinite(rate)){
-        out.avg = rate;
-        out.dates = ['latest'];
-        out.detail = 'open.er-api.com (latest only)';
+        try {
+          let res = await tryTimeseries('USD','SLE', false); // direct
+          if (!res) res = await tryTimeseries('SLE','USD', true); // invert
+          if (res){
+            out.avg = res.avg;
+            out.dates = res.dates;
+            out.detail = `${res.provider} (avg of 5 closes)`;
+            return out;
+          }
+        } catch(_) {}
+
+        // Fallback: latest only (keeps the page usable)
+        try{
+          const r = await fetchWithTimeout('https://open.er-api.com/v6/latest/USD', 6000);
+          if (r.ok){
+            const j = await r.json();
+            const rate = j && j.rates && Number(j.rates.SLE);
+            if (isFinite(rate)){
+              out.avg = rate;
+              out.dates = ['latest'];
+              out.detail = 'open.er-api.com (latest only)';
+              return out;
+            }
+          }
+        }catch(_){}
+
+        out.source = 'manual';
+        out.detail = 'No SLE 5-day series; enter manually.';
         return out;
       }
-    }
-  }catch(_){}
-
-  out.source = 'manual';
-  out.detail = 'No 5-day SLE series found; enter manually.';
-  return out;
-}
-
 
       function computeRows(lbmaUsdOz, purityPct, roe){
         const purity = purityPct/100;
@@ -267,7 +275,6 @@ async function getSLE5DayAvg(){
       }
 
       function renderGrid(cols){
-        // cols[0] = "today column" (uses latest trading close), cols[1] = "yesterday column" (prior calendar day’s nearest trading close)
         $('lbmaC0').textContent   = fmt2(cols[0].lbma);
         $('purC0').textContent    = fmt2(cols[0].purity);
         $('roeC0').textContent    = fmt2(cols[0].roe);
@@ -282,89 +289,77 @@ async function getSLE5DayAvg(){
       }
 
       function nearestTradingClose(series, targetDateISO){
-        // find the latest entry <= targetDateISO; if none that day, step back
-        // series is sorted ascending by date (YYYY-MM-DD)
         for (let i = series.length - 1; i >= 0; i--){
           if (series[i].date <= targetDateISO) return series[i];
         }
-        // if everything is after (shouldn’t happen), just return last
         return series[series.length - 1];
       }
 
-      async function run(){
+      async function run(autoFx=true){
         setColHeaders();
 
-        // Get LBMA series (PM preferred)
+        // LBMA series
         let lbmaSeries, lbmaFix, lbmaVia;
         try{
           const { series, fix, via } = await getLbmaSeries();
-          lbmaSeries = series;
-          lbmaFix = fix;
-          lbmaVia = via;
+          lbmaSeries = series; lbmaFix = fix; lbmaVia = via;
         }catch(e){
           $('lbmaMeta').innerHTML = `<span class="err">LBMA fetch failed</span>`;
-          // Still allow manual overrides to compute if user types ROE/purity, but no LBMA means no calc.
           return;
         }
 
-        // Build calendar reference dates (today/yesterday in local time)
+        // Dates
         const now = new Date();
         const local = new Date(now.getTime() - now.getTimezoneOffset()*60000);
         const todayISO = local.toISOString().slice(0,10);
-        const yISO = (d)=>{ const n = new Date(d); n.setDate(n.getDate()-1); return new Date(n.getTime() - n.getTimezoneOffset()*60000).toISOString().slice(0,10); };
-        const yesterdayISO = yISO(local);
+        const prevISO = (d)=>{ const n = new Date(d); n.setDate(n.getDate()-1); return new Date(n.getTime() - n.getTimezoneOffset()*60000).toISOString().slice(0,10); };
+        const yesterdayISO = prevISO(local);
 
-        // Resolve LBMA closes for both columns via nearest prior trading day
+        // Resolve closes
         const lastForYesterday = nearestTradingClose(lbmaSeries, yesterdayISO);
-        const lastForDayBefore = nearestTradingClose(lbmaSeries, yISO(yesterdayISO));
+        const lastForDayBefore = nearestTradingClose(lbmaSeries, prevISO(yesterdayISO));
 
-        $('lbmaMeta').innerHTML = `Using LBMA <strong>${lbmaFix.toUpperCase()}</strong> fix, last trading dates: ` +
+        $('lbmaMeta').innerHTML =
+          `Using LBMA <strong>${lbmaFix.toUpperCase()}</strong> fix, last trading dates: ` +
           `<strong>${lastForYesterday.date}</strong> (Today col) & <strong>${lastForDayBefore.date}</strong> (Yesterday col)` +
           (lbmaVia!=='direct' ? ` <span class="muted">(via ${lbmaVia})</span>` : '');
 
-        // Try to auto compute ROE (3-day average of closes)
-        let roeAuto = await getSLE5DayAvg();
-        if (roeAuto.avg){
-          Roe.value = Number(roeAuto.avg).toFixed(2);
-          $('roeMeta').innerHTML = `${fmt2(roeAuto.avg)} <span class="muted">from ${roeAuto.detail}</span>`;
-          $('rateInfo').innerHTML = `3 latest closes averaged. If weekend/holiday, the provider’s last close is repeated.`;
-        }else{
-          if (!Roe.value) Roe.value = '23.70'; // sensible default you already use
-          $('roeMeta').innerHTML = `${fmt2(parseNum(Roe.value))} <span class="warn">(manual)</span>`;
-          $('rateInfo').innerHTML = `Couldn’t auto-fetch SLE timeseries. Enter ROE manually (3-day avg from USD–SLE closes on Google Finance).`;
+        // ROE handling
+        if (autoFx){
+          let roeAuto = await getSLE5DayAvg();
+          if (roeAuto.avg){
+            Roe.value = Number(roeAuto.avg).toFixed(2);
+            $('roeMeta').innerHTML = `${fmt2(roeAuto.avg)} <span class="muted">from ${roeAuto.detail}</span>`;
+            $('rateInfo').innerHTML = `Averaging last 5 trading-day closes: ${roeAuto.dates.join(', ')}.`;
+          }else{
+            if (!Roe.value) Roe.value = '23.70';
+            $('roeMeta').innerHTML = `${fmt2(parseNum(Roe.value))} <span class="warn">(manual)</span>`;
+            $('rateInfo').innerHTML = `Couldn’t auto-fetch SLE timeseries. Enter ROE manually (5-day avg from USD–SLE closes on Google Finance).`;
+          }
         }
 
         const purityPct = parseNum(Purity.value);
         const roe = parseNum(Roe.value);
 
-        // Column 0 (today-labeled col uses yesterday's nearest trading close)
+        // Build columns
         const col0Lbma = lastForYesterday.usd;
-        const col0 = computeRows(col0Lbma, purityPct, roe);
-
-        // Column 1 (yesterday-labeled col uses the prior trading close)
         const col1Lbma = lastForDayBefore.usd;
-        const col1 = computeRows(col1Lbma, purityPct, roe);
+
+        const c0 = computeRows(col0Lbma, purityPct, roe);
+        const c1 = computeRows(col1Lbma, purityPct, roe);
 
         renderGrid([
-          { lbma: col0Lbma, purity: purityPct, roe: roe, dore: col0.doreUsdOz, buy: col0.buySllPerCarat },
-          { lbma: col1Lbma, purity: purityPct, roe: roe, dore: col1.doreUsdOz, buy: col1.buySllPerCarat },
+          { lbma: col0Lbma, purity: purityPct, roe: roe, dore: c0.doreUsdOz, buy: c0.buySllPerCarat },
+          { lbma: col1Lbma, purity: purityPct, roe: roe, dore: c1.doreUsdOz, buy: c1.buySllPerCarat },
         ]);
 
-        // Persist on first run
         saveState();
       }
 
-      // Recalculate on user edits
+      // Recalc on edits
       function recalcOnEdit(){
         const purityPct = parseNum(Purity.value);
         const roe = parseNum(Roe.value);
-
-        // We need the cached LBMA metadata we wrote on first run
-        try{
-          // rebuild quickly using saved lbma series from localStorage cache if available
-          // (If not cached, just bail; user can reload)
-        }catch(_){}
-        // Easiest: recompute using the visible LBMA cells we already populated
         const lb0 = Number($('lbmaC0').textContent);
         const lb1 = Number($('lbmaC1').textContent);
         if (isFinite(lb0) && isFinite(lb1)){
@@ -381,11 +376,21 @@ async function getSLE5DayAvg(){
 
       Purity && ['input','change','blur'].forEach(e => Purity.addEventListener(e, recalcOnEdit));
       Roe && ['input','change','blur'].forEach(e => Roe.addEventListener(e, recalcOnEdit));
-
-      run().catch(err=>{
-         $('lbmaSrc').innerHTML = `<span class="err">Error: ${err && err.message ? err.message : String(err)}</span>`;
+      RefreshFx && RefreshFx.addEventListener('click', async ()=>{
+        // clear saved ROE & re-pull 5-day series
+        try {
+          const saved = JSON.parse(localStorage.getItem(STORAGE_KEY)||'{}');
+          delete saved.roe;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(saved));
+        } catch(_) {}
+        Roe.value = '';
+        $('roeMeta').textContent = '—';
+        await run(true); // re-pull FX
       });
 
+      run(true).catch(err=>{
+         $('lbmaSrc').innerHTML = `<span class="err">Error: ${err && err.message ? err.message : String(err)}</span>`;
+      });
     })();
   </script>
 </body>
