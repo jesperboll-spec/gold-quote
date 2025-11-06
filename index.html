@@ -72,18 +72,19 @@
 
   <div class="card">
     <table class="tbl" id="grid">
-      <thead>
-        <tr><th>Row</th><th id="colToday">Today</th><th id="colPrev">Yesterday</th></tr>
-      </thead>
-      <tbody>
-        <tr><td>LBMA close (USD / troy oz)</td><td id="lbmaC0">—</td><td id="lbmaC1">—</td></tr>
-        <tr><td>Purity</td><td id="purC0">—</td><td id="purC1">—</td></tr>
-        <tr><td>ROE (SLL per USD)</td><td id="roeC0">—</td><td id="roeC1">—</td></tr>
-        <tr><td>Doré (USD / troy oz)</td><td id="doreUsdC0">—</td><td id="doreUsdC1">—</td></tr>
-        <tr><td><strong>Doré (SLL / carat, no discount)</strong></td><td id="doreSllC0">—</td><td id="doreSllC1">—</td></tr>
-        <tr><td>Buying price (SLL / carat)</td><td id="buySllC0">—</td><td id="buySllC1">—</td></tr>
-      </tbody>
-    </table>
+  <thead>
+    <tr><th>Row</th><th id="colToday">Today</th><th id="colPrev">Yesterday</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>LBMA close (USD / troy oz)</td><td id="lbmaC0">—</td><td id="lbmaC1">—</td></tr>
+    <tr><td>Purity</td><td id="purC0">—</td><td id="purC1">—</td></tr>
+    <tr><td>ROE (SLL per USD)</td><td id="roeC0">—</td><td id="roeC1">—</td></tr>
+    <tr><td>Doré (USD / troy oz)</td><td id="doreUsdC0">—</td><td id="doreUsdC1">—</td></tr>
+    <tr><td>Doré (SLL / carat, no discount)</td><td id="doreSllC0">—</td><td id="doreSllC1">—</td></tr>
+    <tr><td>Buying price with 5% discount (SLL / carat)</td><td id="buySllC0">—</td><td id="buySllC1">—</td></tr>
+  </tbody>
+</table>
+
     <div class="src" id="lbmaSrc">Source: LBMA daily auction (delayed), PM preferred.</div>
     <div class="src">Formula: Doré USD/oz = LBMA × (Purity%/100). Doré SLL/carat = (Doré USD/oz ÷ 31.1034768 × ROE) ÷ 5. Buying = Doré SLL/carat × 0.95.</div>
   </div>
