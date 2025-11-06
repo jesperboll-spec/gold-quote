@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Doré Buying Price — Daily (SLL per Carat)</title>
+  <meta name="description" content="Shows yesterday's LBMA close, editable purity, 3-day average USD→SLE ROE, doré and SLL/carats. Handles weekends/non-trading by carrying last close." />
+  <style>
+    :root { color-scheme: light; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Inter, Helvetica, Arial;
+      color: #0f172a; background:#f8fafc;
+    }
+    * { box-sizing: border-box; }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 16px; }
+    .title { font-size: 20px; font-weight: 700; margin: 6px 0 2px; }
+    .pill { display:inline-block; margin-left:8px; padding:4px 8px; font-size:12px; background:#f1f5f9; border-radius:999px; color:#334155; }
+    .subtitle { font-size: 13px; color: #64748b; }
+    .card { background:#fff; border:1px solid #e5e7eb; border-radius:16px; padding:16px; box-shadow:0 8px 24px rgba(0,0,0,.06); margin-top:12px; }
+    label { display:block; font-size:12px; color:#475569; margin-bottom:6px; }
+    input {
+      width:100%; padding:12px; border:1px solid #d1d5db; border-radius:12px; font-size:14px; background:#fff;
+    }
+    input:focus { outline:none; border-color:#3b82f6; box-shadow:0 0 0 3px rgba(59,130,246,.2); }
+    .muted { color:#64748b; font-size:12px; }
+    .row { display:grid; grid-template-columns: 1fr 1fr 1fr; gap:12px; }
+    @media (max-width: 760px) { .row { grid-template-columns: 1fr; } }
+    .kpis { display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-top:8px; }
+    @media (max-width: 760px) { .kpis { grid-template-columns: 1fr; } }
+    .kpi { background:#f8fafc; border:1px dashed #e2e8f0; border-radius:12px; padding:12px; }
+    .kpi .label { color:#475569; font-size:12px; margin-bottom:4px; }
+    .kpi .value { font-variant-numeric: tabular-nums; font-weight:600; }
+    .tbl { width:100%; border-collapse:collapse; margin-top:8px; background:#fff; }
+    .tbl th, .tbl td { padding:12px 10px; text-align:right; border-top:1px dashed #e2e8f0; font-variant-numeric: tabular-nums; }
+    .tbl th:first-child, .tbl td:first-child { text-align:left; color:#475569; width:40%; }
+    .tbl thead th { text-transform:uppercase; font-size:12px; color:#64748b; border-top:none; }
+    .src { font-size:12px; color:#475569; margin-top:8px; }
+    .ok { color:#16a34a; }
+    .warn { color:#b45309; }
+    .err { color:#b91c1c; }
+    .pill-mini { display:inline-block; margin-left:6px; padding:2px 6px; font-size:11px; border-radius:999px; background:#0ea5e9; color:#fff; vertical-align:middle; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="title">Doré Buying Price (SLL per Carat) <span class="pill">LBMA close • 3-day ROE avg</span></div>
+    <div class="subtitle">Columns are labeled with today and yesterday; values use the **latest trading close** so weekends/holidays won’t create gaps. Inputs persist locally.</div>
+
+    <div class="card">
+      <div class="row">
+        <div>
+          <label for="purity">Purity (%)</label>
+          <input id="purity" type="text" inputmode="decimal" value="88.68" />
+          <div class="muted">Prefilled 88.68 — editable.</div>
+        </div>
+        <div>
+          <label for="roe">ROE — SLL per 1 USD (3-day close avg)</label>
+          <input id="roe" type="text" inputmode="decimal" placeholder="Fetching…" />
+          <div class="muted">Auto if available; otherwise edit manually.</div>
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <div class="muted" id="rateInfo">Source: Google Finance equivalent (USD→SLE) aggregated; with graceful fallback.</div>
+        </div>
+      </div>
+
+      <div class="kpis">
+        <div class="kpi">
+          <div class="label">LBMA Close Used</div>
+          <div class="value" id="lbmaMeta">—</div>
+        </div>
+        <div class="kpi">
+          <div class="label">ROE (avg of last 3 closes)</div>
+          <div class="value" id="roeMeta">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="title" style="font-size:16px;">Outputs Table</div>
+      <table class="tbl" id="grid">
+        <thead>
+          <tr>
+            <th>Row</th>
+            <th id="colToday">Today</th>
+            <th id="colPrev">Yesterday</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td>LBMA, yesterday close (USD / troy oz)</td><td id="lbmaC0">—</td><td id="lbmaC1">—</td></tr>
+          <tr><td>Purity (%)</td><td id="purC0">—</td><td id="purC1">—</td></tr>
+          <tr><td>ROE (SLL per USD, 3-day close avg)</td><td id="roeC0">—</td><td id="roeC1">—</td></tr>
+          <tr><td>Doré price (USD / troy oz)</td><td id="doreUsdC0">—</td><td id="doreUsdC1">—</td></tr>
+          <tr><td>Buying price (SLL / carat) — 5% off doré, ×ROE, ÷5</td><td id="buySllC0">—</td><td id="buySllC1">—</td></tr>
+        </tbody>
+      </table>
+      <div class="src" id="lbmaSrc">Source: LBMA daily auction (delayed), PM preferred with AM fallback.</div>
+      <div class="src">Formulae: doré(USD/oz) = LBMA × (Purity%/100). Buying (SLL/carat) = (doré(USD/oz) ÷ 31.1034768 × ROE × 0.95) ÷ 5.</div>
+    </div>
+
+    <div class="muted" style="margin-top:8px;">
+      Notes: (1) “Today” column = <strong id="todayNote">—</strong> (values from most recent trading close). (2) “Yesterday” column = previous calendar day, also using nearest prior trading close.
+    </div>
+
+    <div class="logo" style="text-align:center; margin: 12px 0;">
+      <img src="Borg Industries Logo.png" alt="Logo" style="max-width:320px; height:auto;" />
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      const $ = (id)=>document.getElementById(id);
+      const OZ_IN_G = 31.1034768;
+
+      // Persisted state
+      const stateKeys = ['purity','roe'];
+      // Load persisted inputs
+      try {
+        const saved = JSON.parse(localStorage.getItem('dore_calc_v1')||'{}');
+        stateKeys.forEach(k => { if (saved[k] !== undefined && $(k)) $(k).value = saved[k]; });
+      } catch(_){}
+
+      const Purity = $('purity');
+      const Roe = $('roe');
+
+      const fmtInt = (n)=> isFinite(n) ? Math.round(n).toLocaleString() : '—';
+      const fmt2 = (n)=> isFinite(n) ? n.toFixed(2) : '—';
+
+      function parseNum(v){
+        if (typeof v !== 'string') v = String(v ?? '');
+        v = v.trim().replace(/\s+/g,'').replace(',', '.');
+        const n = Number(v);
+        return isFinite(n) ? n : 0;
+      }
+
+      function saveState(){
+        const store = {};
+        stateKeys.forEach(k => store[k] = $(k).value);
+        localStorage.setItem('dore_calc_v1', JSON.stringify(store));
+      }
+
+      function setColHeaders(){
+        const now = new Date();
+        const tzNow = new Date(now.getTime() - now.getTimezoneOffset()*60000); // keep local
+        const todayStr = tzNow.toISOString().slice(0,10);
+        const yest = new Date(tzNow); yest.setDate(yest.getDate()-1);
+        const yestStr = yest.toISOString().slice(0,10);
+        $('colToday').textContent = todayStr;
+        $('colPrev').textContent = yestStr;
+        $('todayNote').textContent = todayStr;
+      }
+
+      async function fetchWithTimeout(url, ms=6000){
+        const ctrl = new AbortController();
+        const t = setTimeout(()=>ctrl.abort(), ms);
+        try{
+          const resp = await fetch(url, { signal: ctrl.signal, cache:'no-store' });
+          return resp;
+        } finally { clearTimeout(t); }
+      }
+
+      function parseLbmaJson(arr){
+        if (!Array.isArray(arr) || arr.length === 0) throw new Error('LBMA: empty');
+        const sorted = arr.slice().sort((a,b)=> (a.d||'').localeCompare(b.d));
+        return sorted.map(row=>{
+          const d = row.d;
+          const usd = Number(Array.isArray(row.v) ? row.v[0] : NaN);
+          if (!isFinite(usd)) return null;
+          return { date: d, usd };
+        }).filter(Boolean);
+      }
+
+      const lbmaEndpoints = [
+        { fix: 'pm', url: 'https://prices.lbma.org.uk/json/gold_pm.json' },
+        { fix: 'am', url: 'https://prices.lbma.org.uk/json/gold_am.json' },
+      ];
+      const wrapUrls = (u)=>[
+        { url: u, via:'direct' },
+        { url: 'https://api.allorigins.win/raw?url='+encodeURIComponent(u), via:'allorigins' },
+        { url: 'https://thingproxy.freeboard.io/fetch/'+encodeURIComponent(u), via:'thingproxy' },
+        { url: 'https://cors.isomorphic-git.org/'+u, via:'isomorphic-git' },
+        { url: 'https://r.jina.ai/http://'+u.replace(/^https?:\/\//,'').replace(/^\/*/,''),
+          via:'jina' },
+      ];
+
+      async function getLbmaSeries(){
+        let lastError = '';
+        for (const ep of lbmaEndpoints){
+          for (const attempt of wrapUrls(ep.url)){
+            try{
+              const r = await fetchWithTimeout(attempt.url, 6000);
+              if(!r.ok) throw new Error('HTTP '+r.status);
+              const text = await r.text();
+              const data = JSON.parse(text);
+              const series = parseLbmaJson(data);
+              if (series.length < 2) throw new Error('LBMA: insufficient data');
+              // prefer PM; if PM fails, AM is fine; return with meta
+              return { series, fix: ep.fix, via: attempt.via };
+            }catch(e){ lastError = e.message || String(e); }
+          }
+        }
+        throw new Error('Could not fetch LBMA. '+lastError);
+      }
+
+      // --- ROE (USD→SLE) last 3 closes average ---
+      // Try a few public endpoints; if SLE unsupported, leave editable.
+      async function getSLE3DayAvg(){
+        const out = { avg:null, dates:[], source:'auto', detail:'' };
+
+        // 1) exchangerate.host timeseries (often supports SLE)
+        try{
+          const today = new Date();
+          const end = new Date(today); end.setDate(end.getDate()-1); // yesterday calendar
+          const start = new Date(end); start.setDate(start.getDate()-10); // lookback 10d to collect 3 closes
+          const fmt = (d)=> d.toISOString().slice(0,10);
+          const url = `https://api.exchangerate.host/timeseries?base=USD&symbols=SLE&start_date=${fmt(start)}&end_date=${fmt(end)}`;
+          const r = await fetchWithTimeout(url, 6000);
+          if (r.ok){
+            const j = await r.json();
+            if (j && j.rates){
+              const entries = Object.entries(j.rates)
+                .map(([d, obj])=> ({ date:d, rate: Number(obj && obj.SLE) }))
+                .filter(x=> isFinite(x.rate))
+                .sort((a,b)=> a.date.localeCompare(b.date));
+              const last3 = entries.slice(-3);
+              if (last3.length >= 3){
+                const avg = last3.reduce((s,x)=>s+x.rate,0)/3;
+                out.avg = avg;
+                out.dates = last3.map(x=>x.date);
+                out.detail = 'exchangerate.host (timeseries)';
+                return out;
+              }
+            }
+          }
+        }catch(_){}
+
+        // 2) open.er-api.com latest (fallback, not guaranteed to have SLE)
+        try{
+          const r = await fetchWithTimeout('https://open.er-api.com/v6/latest/USD', 6000);
+          if (r.ok){
+            const j = await r.json();
+            const rate = j && j.rates && Number(j.rates.SLE);
+            if (isFinite(rate)){
+              out.avg = rate; out.dates = ['latest']; out.detail = 'open.er-api.com (latest only)';
+              return out;
+            }
+          }
+        }catch(_){}
+
+        // No luck. Leave null; UI will keep field editable.
+        out.source = 'manual';
+        out.detail = 'No public timeseries with SLE found; please enter manually.';
+        return out;
+      }
+
+      function computeRows(lbmaUsdOz, purityPct, roe){
+        const purity = purityPct/100;
+        const doreUsdOz = lbmaUsdOz * purity;
+        const buySllPerCarat = ((doreUsdOz / OZ_IN_G) * roe * 0.95) / 5;
+        return { doreUsdOz, buySllPerCarat };
+      }
+
+      function renderGrid(cols){
+        // cols[0] = "today column" (uses latest trading close), cols[1] = "yesterday column" (prior calendar day’s nearest trading close)
+        $('lbmaC0').textContent   = fmt2(cols[0].lbma);
+        $('purC0').textContent    = fmt2(cols[0].purity);
+        $('roeC0').textContent    = fmt2(cols[0].roe);
+        $('doreUsdC0').textContent= fmt2(cols[0].dore);
+        $('buySllC0').textContent = fmtInt(cols[0].buy);
+
+        $('lbmaC1').textContent   = fmt2(cols[1].lbma);
+        $('purC1').textContent    = fmt2(cols[1].purity);
+        $('roeC1').textContent    = fmt2(cols[1].roe);
+        $('doreUsdC1').textContent= fmt2(cols[1].dore);
+        $('buySllC1').textContent = fmtInt(cols[1].buy);
+      }
+
+      function nearestTradingClose(series, targetDateISO){
+        // find the latest entry <= targetDateISO; if none that day, step back
+        // series is sorted ascending by date (YYYY-MM-DD)
+        for (let i = series.length - 1; i >= 0; i--){
+          if (series[i].date <= targetDateISO) return series[i];
+        }
+        // if everything is after (shouldn’t happen), just return last
+        return series[series.length - 1];
+      }
+
+      async function run(){
+        setColHeaders();
+
+        // Get LBMA series (PM preferred)
+        let lbmaSeries, lbmaFix, lbmaVia;
+        try{
+          const { series, fix, via } = await getLbmaSeries();
+          lbmaSeries = series;
+          lbmaFix = fix;
+          lbmaVia = via;
+        }catch(e){
+          $('lbmaMeta').innerHTML = `<span class="err">LBMA fetch failed</span>`;
+          // Still allow manual overrides to compute if user types ROE/purity, but no LBMA means no calc.
+          return;
+        }
+
+        // Build calendar reference dates (today/yesterday in local time)
+        const now = new Date();
+        const local = new Date(now.getTime() - now.getTimezoneOffset()*60000);
+        const todayISO = local.toISOString().slice(0,10);
+        const yISO = (d)=>{ const n = new Date(d); n.setDate(n.getDate()-1); return new Date(n.getTime() - n.getTimezoneOffset()*60000).toISOString().slice(0,10); };
+        const yesterdayISO = yISO(local);
+
+        // Resolve LBMA closes for both columns via nearest prior trading day
+        const lastForYesterday = nearestTradingClose(lbmaSeries, yesterdayISO);
+        const lastForDayBefore = nearestTradingClose(lbmaSeries, yISO(yesterdayISO));
+
+        $('lbmaMeta').innerHTML = `Using LBMA <strong>${lbmaFix.toUpperCase()}</strong> fix, last trading dates: ` +
+          `<strong>${lastForYesterday.date}</strong> (Today col) & <strong>${lastForDayBefore.date}</strong> (Yesterday col)` +
+          (lbmaVia!=='direct' ? ` <span class="muted">(via ${lbmaVia})</span>` : '');
+
+        // Try to auto compute ROE (3-day average of closes)
+        let roeAuto = await getSLE3DayAvg();
+        if (roeAuto.avg){
+          Roe.value = Number(roeAuto.avg).toFixed(2);
+          $('roeMeta').innerHTML = `${fmt2(roeAuto.avg)} <span class="muted">from ${roeAuto.detail}</span>`;
+          $('rateInfo').innerHTML = `3 latest closes averaged. If weekend/holiday, the provider’s last close is repeated.`;
+        }else{
+          if (!Roe.value) Roe.value = '23.70'; // sensible default you already use
+          $('roeMeta').innerHTML = `${fmt2(parseNum(Roe.value))} <span class="warn">(manual)</span>`;
+          $('rateInfo').innerHTML = `Couldn’t auto-fetch SLE timeseries. Enter ROE manually (3-day avg from USD–SLE closes on Google Finance).`;
+        }
+
+        const purityPct = parseNum(Purity.value);
+        const roe = parseNum(Roe.value);
+
+        // Column 0 (today-labeled col uses yesterday's nearest trading close)
+        const col0Lbma = lastForYesterday.usd;
+        const col0 = computeRows(col0Lbma, purityPct, roe);
+
+        // Column 1 (yesterday-labeled col uses the prior trading close)
+        const col1Lbma = lastForDayBefore.usd;
+        const col1 = computeRows(col1Lbma, purityPct, roe);
+
+        renderGrid([
+          { lbma: col0Lbma, purity: purityPct, roe: roe, dore: col0.doreUsdOz, buy: col0.buySllPerCarat },
+          { lbma: col1Lbma, purity: purityPct, roe: roe, dore: col1.doreUsdOz, buy: col1.buySllPerCarat },
+        ]);
+
+        // Persist on first run
+        saveState();
+      }
+
+      // Recalculate on user edits
+      function recalcOnEdit(){
+        const purityPct = parseNum(Purity.value);
+        const roe = parseNum(Roe.value);
+
+        // We need the cached LBMA metadata we wrote on first run
+        try{
+          // rebuild quickly using saved lbma series from localStorage cache if available
+          // (If not cached, just bail; user can reload)
+        }catch(_){}
+        // Easiest: recompute using the visible LBMA cells we already populated
+        const lb0 = Number($('lbmaC0').textContent);
+        const lb1 = Number($('lbmaC1').textContent);
+        if (isFinite(lb0) && isFinite(lb1)){
+          const c0 = computeRows(lb0, purityPct, roe);
+          const c1 = computeRows(lb1, purityPct, roe);
+          renderGrid([
+            { lbma: lb0, purity: purityPct, roe: roe, dore: c0.doreUsdOz, buy: c0.buySllPerCarat },
+            { lbma: lb1, purity: purityPct, roe: roe, dore: c1.doreUsdOz, buy: c1.buySllPerCarat },
+          ]);
+          $('roeMeta').textContent = fmt2(roe);
+          saveState();
+        }
+      }
+
+      Purity && ['input','change','blur'].forEach(e => Purity.addEventListener(e, recalcOnEdit));
+      Roe && ['input','change','blur'].forEach(e => Roe.addEventListener(e, recalcOnEdit));
+
+      run().catch(err=>{
+         $('lbmaSrc').innerHTML = `<span class="err">Error: ${err && err.message ? err.message : String(err)}</span>`;
+      });
+
+    })();
+  </script>
+</body>
+</html>
