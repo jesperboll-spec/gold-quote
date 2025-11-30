@@ -1,8 +1,3 @@
-```html
-<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate" />
-<meta http-equiv="Pragma" content="no-cache" />
-<meta http-equiv="Expires" content="0" />
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -81,6 +76,12 @@
         </tr>
       </thead>
       <tbody>
+        <tr>
+          <td>Base</td>
+          <td>0%</td>
+          <td>—</td>
+          <td id="priceBase">—</td>
+        </tr>
         <tr>
           <td>A</td>
           <td>-8%</td>
@@ -192,9 +193,9 @@
   }
 
   function computeBaseSllPerCarat(lbma, purityPct, fx){
-    const doreUsdPerOz   = lbma * (purityPct / 100);            // doré USD / oz
-    const doreSllPerGram = (doreUsdPerOz / OZ_IN_G) * fx;       // doré SLL / g
-    const doreSllPerCarat = doreSllPerGram / 5;                 // doré SLL / carat
+    const doreUsdPerOz    = lbma * (purityPct / 100);      // doré USD / oz
+    const doreSllPerGram  = (doreUsdPerOz / OZ_IN_G) * fx; // doré SLL / g
+    const doreSllPerCarat = doreSllPerGram / 5;           // doré SLL / carat
     return doreSllPerCarat;
   }
 
@@ -213,9 +214,10 @@
     const priceB = baseCarat * 0.90;  // -10%
     const priceC = baseCarat * 0.85;  // -15%
 
-    $('priceA').textContent = fmtInt(priceA);
-    $('priceB').textContent = fmtInt(priceB);
-    $('priceC').textContent = fmtInt(priceC);
+    $('priceBase').textContent = fmtInt(baseCarat);
+    $('priceA').textContent    = fmtInt(priceA);
+    $('priceB').textContent    = fmtInt(priceB);
+    $('priceC').textContent    = fmtInt(priceC);
 
     save();
   }
@@ -253,4 +255,3 @@
 </script>
 </body>
 </html>
-```
