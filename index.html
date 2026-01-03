@@ -52,7 +52,7 @@
       </div>
       <div>
         <label for="purity">Purity (%)</label>
-        <input id="purity" type="text" inputmode="decimal" value="88.6" />
+        <input id="purity" type="text" inputmode="decimal" value="88.9" />
         <div class="muted">Purity from latest shipment</div>
       </div>
     </div>
@@ -79,25 +79,25 @@
         <tr>
           <td>Base</td>
           <td>0%</td>
-          <td>89–92%</td>
+          <td>24c</td>
           <td id="priceBase">—</td>
         </tr>
         <tr>
           <td>A</td>
-          <td>-8%</td>
-          <td>89–92%</td>
+          <td>-6%</td>
+          <td>21.5c-22c</td>
           <td id="priceA">—</td>
         </tr>
         <tr>
           <td>B</td>
-          <td>-10%</td>
-          <td>86–88%</td>
+          <td>-8%</td>
+          <td>20.5c-21.5c</td>
           <td id="priceB">—</td>
         </tr>
         <tr>
           <td>C</td>
-          <td>-15%</td>
-          <td>82–85%</td>
+          <td>-13%</td>
+          <td>19.7c-20.5c</td>
           <td id="priceC">—</td>
         </tr>
       </tbody>
@@ -210,9 +210,9 @@
 
     const baseCarat = computeBaseSllPerCarat(currentLbma, purity, fx);
 
-    const priceA = baseCarat * 0.92;  // -8%
-    const priceB = baseCarat * 0.90;  // -10%
-    const priceC = baseCarat * 0.85;  // -15%
+    const priceA = baseCarat * 0.94;  // -6%
+    const priceB = baseCarat * 0.92;  // -8%
+    const priceC = baseCarat * 0.87;  // -13%
 
     $('priceBase').textContent = fmtInt(baseCarat);
     $('priceA').textContent    = fmtInt(priceA);
